@@ -4,12 +4,14 @@ import (
 	"context"
 	"log"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"hotwallet/backend/config"
 	"hotwallet/backend/internal/blockchain/network"
 	"hotwallet/backend/internal/blockchain/tokenmeta"
+	"hotwallet/backend/internal/blockchain/wallet"
 	"hotwallet/backend/internal/blockchain/watcher"
 	"hotwallet/backend/internal/infrastructure/router"
 	"hotwallet/backend/internal/infrastructure/store"
@@ -17,6 +19,22 @@ import (
 
 func main() {
 	cfg := config.Load()
+
+	// Identitas wallet: seed phrase BIP39. Kalau belum ada di environment,
+	// buat 12 kata acak dan simpan ke .env supaya alamat tetap sama setelah
+	// restart. File .env tidak ikut git.
+	if cfg.WalletMnemonic == "" {
+		mnemonic, err := wallet.NewMnemonic(12)
+		if err != nil {
+			log.Fatalf("wallet: %v", err)
+		}
+		envPath := filepath.Join(cfg.Root, ".env")
+		if err := config.SaveEnvValue(envPath, "WALLET_MNEMONIC", mnemonic); err != nil {
+			log.Printf("warning: simpan seed phrase ke .env: %v", err)
+		}
+		cfg.WalletMnemonic = mnemonic
+		log.Printf("seed phrase wallet dibuat dan disimpan di %s", envPath)
+	}
 
 	st, err := store.Open(cfg.DBPath)
 	if err != nil {

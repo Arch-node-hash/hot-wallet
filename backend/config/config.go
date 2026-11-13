@@ -22,6 +22,10 @@ type Config struct {
 	// Security
 	EncryptionKey string
 
+	// Wallet identity (BIP39 seed phrase). Bila kosong, server membuat satu
+	// secara acak dan menyimpannya ke .env.
+	WalletMnemonic string
+
 	// Backup
 	BackupDir string
 
@@ -78,6 +82,7 @@ func Load() Config {
 		DefaultNetwork:   env("DEFAULT_NETWORK", "ethereum"),
 		EnableTestnets:   env("ENABLE_TESTNETS", "false") == "true",
 		EncryptionKey:    env("ENCRYPTION_KEY", ""),
+		WalletMnemonic:   env("WALLET_MNEMONIC", ""),
 		BackupDir:        filepath.Join(dataDir, "backups"),
 		RPCEndpoints:     rpcEndpoints,
 		WSSEndpoints:     wssEndpoints,
@@ -175,4 +180,45 @@ func loadDotEnv(path string) {
 			return
 		}
 	}
+}
+
+// SaveEnvValue menulis atau mengganti satu nilai di file .env. Dipakai untuk
+// menyimpan seed phrase yang dibuat otomatis agar identitas wallet tetap sama
+// setelah server restart.
+func SaveEnvValue(path, key, value string) error {
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	lines := strings.Split(string(data), "\n")
+	replaced := false
+	prefixes := []string{key + "=", "export " + key + "="}
+
+	for i, raw := range lines {
+		trimmed := strings.TrimSpace(raw)
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(trimmed, prefix) {
+				lines[i] = key + "=" + value
+				replaced = true
+				break
+			}
+		}
+	}
+
+	if !replaced {
+		if len(lines) > 0 && lines[len(lines)-1] != "" {
+			lines = append(lines, "")
+		}
+		lines = append(lines,
+			"# Seed phrase wallet (dibuat otomatis, jangan di-commit)",
+			key+"="+value,
+		)
+	}
+
+	content := strings.Join(lines, "\n")
+	if !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	return os.WriteFile(path, []byte(content), 0o600)
 }

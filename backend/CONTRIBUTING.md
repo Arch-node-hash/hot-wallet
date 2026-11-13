@@ -185,6 +185,21 @@ path, err := st.Backup()         // → data/backups/<stamp>-hotwallet.db
 err = st.Restore(path)           // salin isi backup ke database aktif
 ```
 
+### `internal/blockchain/wallet`
+
+```go
+mnemonic, err := wallet.NewMnemonic(12)       // BIP39, 12 kata
+ok := wallet.ValidateMnemonic(mnemonic)       // checksum + wordlist
+
+evm, err := wallet.DeriveEVM(mnemonic, "", 0)    // m/44'/60'/0'/0/0
+sol, err := wallet.DeriveSolana(mnemonic, "", 0) // m/44'/501'/0'/0'
+```
+
+`DeriveEVM` menghasilkan alamat ber-checksum EIP-55, `DeriveSolana`
+menghasilkan alamat base58 ed25519. Seed dibaca dari `WALLET_MNEMONIC` di
+`.env`; bila kosong, `cmd/api` membuat satu secara acak dan menuliskannya ke
+`.env`. Jangan menyimpan seed/private key ke tabel `wallets`.
+
 ### `pkg/auth/token.go`
 
 ```go

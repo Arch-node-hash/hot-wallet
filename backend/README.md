@@ -47,6 +47,7 @@ Semua lewat environment variable (atau file `backend/.env`):
 | `WS_WATCHER_ENABLED` | `true`    | Nyalakan watcher saldo real-time    |
 | `WS_DEBOUNCE` | `4s`             | Jarak minimum refresh per blok (EVM) |
 | `WS_REFRESH` | `30s`             | Refresh periodik cadangan           |
+| `WALLET_MNEMONIC` | *(dibuat otomatis)* | Seed phrase BIP39 12 kata untuk identitas wallet |
 
 Endpoint WebSocket **tidak di-hardcode** di source. Saat pertama dijalankan,
 nilai dari env di-seed ke tabel `rpc_configs.wss_url`; setelah itu nilainya
@@ -68,6 +69,35 @@ wallet) dan menyimpan setiap hasil pembacaan ke SQLite:
 
 Hasil ditulis ke `wallet_balances`, `wallets.balance` (native), dan
 `network_summaries`. Metadata token yang dipantau ada di tabel `tokens`.
+
+## Seed phrase & identitas wallet
+
+Identitas wallet memakai **seed phrase BIP39** (12 kata). Saat server pertama
+kali dijalankan dan `WALLET_MNEMONIC` masih kosong, server membuat seed acak
+lalu menuliskannya ke `backend/.env`. File `.env` tidak ikut git — **backup
+file itu**, karena seed yang sama diperlukan untuk memulihkan semua alamat.
+
+Dari satu seed, alamat diturunkan secara HD:
+
+| Jaringan | Path derivasi |
+|---|---|
+| EVM (Ethereum, BNB Chain, Arbitrum, Robinhood) | `m/44'/60'/0'/0/{index}` |
+| Solana | `m/44'/501'/{index}'/0'` |
+
+Tabel `wallets` hanya menyimpan `address`, `network`, dan `derivation_path` —
+seed phrase tidak dimasukkan ke database. Helper-nya ada di
+`internal/blockchain/wallet`:
+
+```go
+mnemonic, _ := wallet.NewMnemonic(12)          // buat seed phrase
+ok := wallet.ValidateMnemonic(mnemonic)        // cek checksum BIP39
+
+evm, _ := wallet.DeriveEVM(mnemonic, "", 0)    // alamat EVM + private key
+sol, _ := wallet.DeriveSolana(mnemonic, "", 0) // alamat Solana + ed25519 key
+```
+
+Alamat EVM memakai checksum EIP-55; alamat Solana memakai base58 dari public
+key ed25519. Private key hasil derivasi **tidak** ditulis ke database.
 
 ## Struktur
 
