@@ -43,7 +43,7 @@ Aturan pembagian tanggung jawab:
 | `service.go` | validasi, aturan bisnis, gabung beberapa repo | `fiber.Ctx`, status code |
 | `model.go` | struct + tag JSON + `GetID`/`SetID` | akses database, HTTP |
 | `pkg/crud/generic.go` | operasi koleksi generik | aturan bisnis domain |
-| `store/sqlite.go` | koneksi, Load/Save, transaksi | tahu soal Task/Contact/dll |
+| `store/sqlite.go` | koneksi, Load/Save, transaksi | tahu soal Contact/dll |
 | `router.go` | wiring + daftar route | logika bisnis |
 
 ---
@@ -59,7 +59,6 @@ backend/
 │   └── hotwallet.db
 ├── internal/
 │   ├── modules/
-│   │   ├── activity/       handler.go, model.go, service.go
 │   │   ├── contact/        handler.go, model.go, service.go
 │   │   ├── portfolio/      handler.go, model.go, service.go
 │   │   ├── setting/        handler.go, model.go, service.go
@@ -67,16 +66,21 @@ backend/
 │   │   └── wallet/         handler.go, model.go, service.go
 │   ├── blockchain/
 │   │   ├── wallet/         master.go, derivation.go, address.go, keystore.go
-│   │   ├── evm/            client.go, balance.go, transfer.go, token.go, gas.go, transaction.go
-│   │   ├── solana/         client.go, balance.go, transfer.go, token.go, transaction.go
-│   │   └── network/        registry.go, network.go, rpc.go
+│   │   ├── evm/            client.go, balance.go, ws.go, transfer.go, token.go, gas.go, transaction.go
+│   │   ├── solana/         client.go, rpc.go, ws.go, token.go, transfer.go, transaction.go
+│   │   ├── network/        registry.go, network.go, rpc.go, defaults.go
+│   │   ├── tokenmeta/      defaults.go
+│   │   ├── watcher/        manager.go
+│   │   └── wsrpc/          wsrpc.go
 │   ├── infrastructure/
 │   │   ├── router/         router.go
-│   │   ├── store/          sqlite.go, backup.go, migrations/
+│   │   ├── store/          sqlite.go, backup.go, schema.go, balances.go, rpc.go
 │   │   ├── security/       encryption.go, keymanager.go
 │   │   └── health/         handler.go
 │   └── shared/
 │       ├── errors/         errors.go
+│       ├── interfaces/     services.go
+│       ├── models/         api.go
 │       └── types/          types.go
 ├── pkg/
 │   ├── auth/               handler.go, middleware.go, service.go, token.go
@@ -93,19 +97,14 @@ backend/
 
 ## 3. Peta domain
 
-| Domain | Struct | Koleksi SQLite | Route |
+| Domain | Model utama | Tabel | Route |
 |---|---|---|---|
-| `transaction` | `Task` | `tasks` | `/api/tasks` |
-| `transaction` | `Project` | `projects` | `/api/projects` |
-| `contact` | `Member` | `team` | `/api/team` |
-| `activity` | `Event` | `events` | `/api/calendar/events` |
-| `activity` | `Reminder` | `reminders` | `/api/reminders` |
-| `wallet` | `TimeEntry` | `time_entries` | `/api/time-entries` |
-| `wallet` | `Response` (agregat) | `dashboard` | `GET /api/dashboard` |
-| `portfolio` | `Analytics` | `analytics` | `GET /api/analytics` |
-| `setting` | `Settings` | `settings` | `GET/PUT /api/settings` |
-| `auth` | `User` | `users` | `GET /api/auth/me` |
-| `health` | — | — | `GET /api/health` |
+| `wallet` | `Wallet`, `WalletBalance`, `NetworkSummary` | `wallets`, `wallet_balances`, `network_summaries` | `/api/v1/wallets` |
+| `portfolio` | `PortfolioSummary`, `PortfolioToken`, `NetworkAsset` | `portfolio_summary`, `portfolio_tokens`, `network_assets` | `/api/v1/portfolio` |
+| `transaction` | `Transaction` | `transactions` | `/api/v1/transactions` |
+| `contact` | `Contact` | `contacts` | `/api/v1/contacts` |
+| `setting` | `Setting`, `RPCConfig`, `SecuritySetting`, `BackupHistory` | `settings`, `rpc_configs`, `security_settings`, `backup_history` | `/api/v1/settings` |
+| `health` | — | — | `GET /api/v1/health` |
 
 ---
 
@@ -118,13 +117,13 @@ response.SendSuccess(c, fiber.StatusOK, data)
 response.SendError(c, err)                       // status otomatis dari error
 response.SendMessage(c, fiber.StatusOK, "ok")
 response.SendPaginated(c, fiber.StatusOK, data, meta)
-response.SendPlaceholder(c, fiber.StatusOK, "tasks")
+response.SendPlaceholder(c, fiber.StatusOK, "wallets")
 ```
 
 ### `pkg/crud/generic.go`
 
 ```go
-repo := crud.NewRepo[transaction.Task](st, "tasks")
+repo := crud.NewRepo[models.Contact](st, "contacts")
 
 repo.All()                       // ([]T, error)
 repo.Get(id)                     // (T, bool, error)   bool = ketemu?
@@ -159,9 +158,9 @@ items, meta := crud.Paginate(allItems, page, limit, 100)
 st, err := store.Open("data/hotwallet.db")
 defer st.Close()
 
-st.Load("tasks", &items)         // koleksi tidak ada → dst tetap kosong
-st.Save("tasks", items)          // upsert
-st.Delete("tasks")
+st.Load("contacts", &items)      // koleksi tidak ada → dst tetap kosong
+st.Save("contacts", items)       // upsert
+st.Delete("contacts")
 st.Path()
 st.Ping()
 ```
@@ -196,8 +195,8 @@ hash := auth.HashPIN("123456")
 auth.VerifyPIN("123456", hash)
 ```
 
-Middleware `auth.Protect(secret, "/api/health", "/api/auth/...")` sudah ada,
-tapi belum dipasang di router.
+Middleware `auth.Protect(secret, "/api/v1/health", "/api/v1/settings/security")`
+sudah ada, tapi belum dipasang di router.
 
 ---
 
@@ -225,10 +224,10 @@ Lalu tambahkan method di `service.go` dan dependency yang dibutuhkan.
 Cukup edit model:
 
 ```go
-// internal/modules/transaction/model.go
-type Task struct {
+// internal/modules/contact/model.go
+type Contact struct {
     // ...
-    Description string `json:"description"`
+    Note string `json:"note"`
 }
 ```
 
@@ -238,11 +237,11 @@ seluruh struct dan repo meneruskan apa adanya.
 Bila field wajib, tambahkan validasi di **service**, bukan handler:
 
 ```go
-func (s *Service) Create(t Task) (Task, error) {
-    if t.Title == "" {
-        return Task{}, crud.Invalid("title wajib diisi")
+func (s *Service) Create(x Contact) (Contact, error) {
+    if x.Address == "" {
+        return Contact{}, crud.Invalid("address wajib diisi")
     }
-    return s.repo.Create(t)
+    return s.repo.Create(x)
 }
 ```
 
@@ -265,39 +264,27 @@ func (s *Service) Create(t Task) (Task, error) {
    ```
 3. Daftarkan di `router.go`:
    ```go
-   app.Get("/api/tasks/summary", taskH.Summary)
+   walletGroup.Get("/:walletID/nets", func(c fiber.Ctx) error {
+       return response.SendPlaceholder(c, fiber.StatusNotImplemented, "wallet networks")
+   })
    ```
-   Letakkan **sebelum** route `/:id` agar tidak dianggap sebagai ID.
+   Letakkan route statis **sebelum** route `/:id` agar tidak dianggap sebagai ID.
 
-### D. Menambah resource CRUD baru
+### D. Menambah endpoint fitur baru
 
-Buat tiga file di `internal/modules/<domain>/`:
-
-```
-model.go      struct + GetID/SetID
-service.go    wrapper crud.Repo
-handler.go    6 method CRUD
-```
-
-Lalu di `router.go`:
+Semua endpoint fitur berada di grup `/api/v1` pada `router.go`. Tambahkan
+handler di `internal/modules/<domain>/handler.go`, lalu daftarkan di grup yang
+sesuai:
 
 ```go
-repo := crud.NewRepo[<domain>.Item](st, "items")
-svc := <domain>.NewService(repo)
-h := <domain>.NewHandler(svc)
-registerCRUD(app, "/api/items", h)
+walletGroup := apiV1.Group("/wallets")
+walletGroup.Post("/:walletID/send", walletH.Send)
 ```
 
-`registerCRUD` otomatis membuat:
-
-```
-GET    /api/items
-POST   /api/items
-GET    /api/items/:id
-PUT    /api/items/:id
-PATCH  /api/items/:id
-DELETE /api/items/:id
-```
+Saat ini handler modul masih skeleton dan `router.go` memakai placeholder
+inline. Setelah handler diimplementasikan, ganti placeholder tersebut dengan
+method handler aslinya. Tidak ada lagi helper `registerCRUD`; daftarkan route
+secara eksplisit supaya path tetap sesuai 5 fitur.
 
 ### E. Memakai pagination di endpoint list
 
@@ -323,9 +310,8 @@ func (h *Handler) List(c fiber.Ctx) error {
 ```go
 // router.go, setelah middleware CORS
 app.Use(auth.Protect([]byte(secret),
-    "/api/health",
-    "/api/auth/login",
-    "/api/auth/unlock",
+    "/api/v1/health",
+    "/api/v1/settings/security",
 ))
 ```
 
@@ -372,11 +358,11 @@ PORT=5022 go run ./cmd/api
 Tes endpoint yang berubah:
 
 ```bash
-curl -s http://localhost:5022/api/health
-curl -s http://localhost:5022/api/tasks
-curl -s -X POST http://localhost:5022/api/tasks \
+curl -s http://localhost:5022/api/v1/health
+curl -s http://localhost:5022/api/v1/wallets
+curl -s -X POST http://localhost:5022/api/v1/contacts \
   -H 'Content-Type: application/json' \
-  -d '{"title":"Cek manual"}'
+  -d '{"name":"Cek manual","address":"0x0000000000000000000000000000000000000000","network":"Ethereum Mainnet"}'
 ```
 
 Kalau memakai binary (lebih aman dari proses `go run` yang tertinggal):
@@ -395,7 +381,7 @@ PORT=5022 /tmp/hotwallet-api
 | `404` di endpoint baru | sudah didaftarkan di `router.go`? urutan route `/:id`? |
 | `500` padahal build OK | data koleksi rusak / field tidak cocok; lihat log `logger.Error` |
 | `405 Method Not Allowed` | method route beda (GET vs POST/PUT/PATCH) |
-| Data tidak berubah | nama koleksi salah (`tasks` vs `projects`) |
+| Data tidak berubah | nama koleksi/tabel salah (`contacts` vs `wallets`) |
 | `database is locked` | ada proses lain memakai DB yang sama; hentikan dulu |
 | `CGO_ENABLED=0` | driver SQLite butuh CGO; aktifkan dan sediakan GCC |
 | Perubahan tidak muncul | server lama masih jalan di port yang sama; matikan dulu |
@@ -407,13 +393,27 @@ PORT=5022 /tmp/hotwallet-api
 | Method | Path |
 |---|---|
 | GET | `/` |
-| GET | `/api/health` |
-| GET | `/api/auth/me` |
-| POST | `/api/auth/logout` |
-| GET | `/api/dashboard` |
-| GET | `/api/analytics` |
-| GET/PUT | `/api/settings` |
-| POST | `/api/settings/avatar` |
-| GET/POST | `/api/tasks`, `/api/projects`, `/api/team`, `/api/reminders`, `/api/calendar/events`, `/api/time-entries` |
-| GET/PUT/PATCH/DELETE | `.../<resource>/:id` |
+| GET | `/api/v1/health` |
+| GET/POST | `/api/v1/wallets` |
+| GET/DELETE | `/api/v1/wallets/:walletID` |
+| GET | `/api/v1/wallets/:walletID/balance` |
+| POST | `/api/v1/wallets/:walletID/send` |
+| GET | `/api/v1/wallets/:walletID/receive` |
+| GET | `/api/v1/portfolio/summary` |
+| GET | `/api/v1/portfolio/tokens` |
+| GET | `/api/v1/portfolio/networks` |
+| GET | `/api/v1/transactions` |
+| GET | `/api/v1/transactions/:txHash` |
+| GET | `/api/v1/transactions/:txHash/status` |
+| GET/POST | `/api/v1/contacts` |
+| GET/PUT/DELETE | `/api/v1/contacts/:contactID` |
+| POST | `/api/v1/settings/wallets/create` |
+| POST | `/api/v1/settings/wallets/import` |
+| GET/PUT | `/api/v1/settings/rpc` |
+| GET/PUT | `/api/v1/settings/security` |
+| GET/POST | `/api/v1/settings/backup` |
 | GET | `/avatars/*` |
+
+Endpoint fitur masih mengembalikan `501 Not Implemented` sampai handler di
+`internal/modules/*` diisi. Path di luar tabel ini (misalnya `/api/dashboard`,
+`/api/tasks`, `/api/auth/*`) mengembalikan `404`.

@@ -179,21 +179,3 @@ func setupAPIV1Routes(app *fiber.App) {
 		return c.Status(501).JSON(fiber.Map{"message": "Setting backup create - not implemented"})
 	})
 }
-
-type crudHandler interface {
-	List(fiber.Ctx) error
-	Get(fiber.Ctx) error
-	Create(fiber.Ctx) error
-	Update(fiber.Ctx) error
-	Patch(fiber.Ctx) error
-	Delete(fiber.Ctx) error
-}
-
-func registerCRUD(app *fiber.App, base string, h crudHandler) {
-	app.Get(base, h.List)
-	app.Post(base, h.Create)
-	app.Get(base+"/:id", h.Get)
-	app.Put(base+"/:id", h.Update)
-	app.Patch(base+"/:id", h.Patch)
-	app.Delete(base+"/:id", h.Delete)
-}

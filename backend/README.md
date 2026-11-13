@@ -31,7 +31,7 @@ di `data/hotwallet.db`.
 
 ```bash
 curl http://localhost:5009/
-curl http://localhost:5009/api/health
+curl http://localhost:5009/api/v1/health
 ```
 
 ## Konfigurasi
@@ -73,80 +73,32 @@ Hasil ditulis ke `wallet_balances`, `wallets.balance` (native), dan
 
 ```
 backend/
-├── cmd/
-│   └── api/
-│       └── main.go
-├── config/
-│   └── config.go
+├── cmd/api/main.go          # Entry point + seed RPC/token + start watcher
+├── config/config.go         # Konfigurasi via env/.env
 ├── data/
 │   ├── avatars/
 │   └── hotwallet.db
 ├── internal/
-│   ├── modules/
-│   │   ├── activity/
-│   │   │   ├── handler.go
-│   │   │   ├── model.go
-│   │   │   └── service.go
-│   │   ├── contact/
-│   │   │   ├── handler.go
-│   │   │   ├── model.go
-│   │   │   └── service.go
-│   │   ├── portfolio/
-│   │   │   ├── handler.go
-│   │   │   ├── model.go
-│   │   │   └── service.go
-│   │   ├── setting/
-│   │   │   ├── handler.go
-│   │   │   ├── model.go
-│   │   │   └── service.go
-│   │   ├── transaction/
-│   │   │   ├── handler.go
-│   │   │   ├── model.go
-│   │   │   └── service.go
-│   │   └── wallet/
-│   │       ├── handler.go
-│   │       ├── model.go
-│   │       └── service.go
 │   ├── blockchain/
-│   │   ├── wallet/
-│   │   │   ├── master.go
-│   │   │   ├── derivation.go
-│   │   │   ├── address.go
-│   │   │   └── keystore.go
-│   │   ├── evm/
-│   │   │   ├── client.go
-│   │   │   ├── balance.go
-│   │   │   ├── transfer.go
-│   │   │   ├── token.go
-│   │   │   ├── gas.go
-│   │   │   └── transaction.go
-│   │   ├── solana/
-│   │   │   ├── client.go
-│   │   │   ├── balance.go
-│   │   │   ├── transfer.go
-│   │   │   ├── token.go
-│   │   │   └── transaction.go
-│   │   └── network/
-│   │       ├── registry.go
-│   │       ├── network.go
-│   │       └── rpc.go
+│   │   ├── evm/             # Client + watcher WS EVM
+│   │   ├── solana/          # Client + watcher WS Solana + ATA token
+│   │   ├── network/         # Registry + nama jaringan kanonik
+│   │   ├── tokenmeta/       # Metadata token bawaan
+│   │   ├── wallet/          # HD wallet/keystore
+│   │   ├── watcher/         # Manager watcher per jaringan
+│   │   └── wsrpc/           # Client JSON-RPC over WebSocket
 │   ├── infrastructure/
-│   │   ├── router/
-│   │   │   └── router.go
-│   │   ├── store/
-│   │   │   ├── sqlite.go
-│   │   │   ├── backup.go
-│   │   │   └── migrations/
-│   │   ├── security/
-│   │   │   ├── encryption.go
-│   │   │   └── keymanager.go
+│   │   ├── router/router.go # Semua route API
+│   │   ├── store/           # SQLite, schema, saldo, rpc_configs
+│   │   ├── security/        # Enkripsi/kunci
 │   │   └── health/
-│   │       └── handler.go
-│   └── shared/
-│       ├── errors/
-│       │   └── errors.go
-│       └── types/
-│           └── types.go
+│   ├── modules/             # Skeleton handler/service per fitur
+│   │   ├── wallet/
+│   │   ├── portfolio/
+│   │   ├── transaction/
+│   │   ├── contact/
+│   │   └── setting/
+│   └── shared/              # Model, interface, error
 ├── pkg/
 │   ├── auth/
 │   ├── crud/
@@ -155,16 +107,15 @@ backend/
 │   └── validator/
 ├── go.mod
 ├── go.sum
-├── .env
 ├── .env.example
 ├── .gitignore
 ├── README.md
 └── CONTRIBUTING.md
 ```
 
-Package `internal/blockchain/*`, `internal/infrastructure/security`, dan
-`internal/shared/*` masih berupa skeleton (kontrak + TODO), belum terhubung ke
-route mana pun.
+Handler fitur di `internal/modules/*` masih skeleton; routing saat ini memakai
+placeholder inline di `router.go`. Watcher saldo dan penyimpanan ke database
+sudah berjalan.
 
 Alur request:
 
@@ -174,51 +125,64 @@ Request → Fiber middleware → router → handler → service → crud.Repo �
 
 ## Skema SQLite
 
-Tabel `documents`:
+Database dibuat otomatis di `data/hotwallet.db`. Tabel yang dipakai:
 
-| Kolom        | Tipe | Keterangan                        |
-|--------------|------|-----------------------------------|
-| `name`       | TEXT | Nama koleksi (primary key)        |
-| `data`       | TEXT | Dokumen JSON koleksi              |
-| `updated_at` | TEXT | Waktu update terakhir (RFC3339)   |
-
-Contoh nama koleksi: `tasks`, `projects`, `team`, `events`, `reminders`,
-`time_entries`, `settings`, `analytics`, `dashboard`, `users`.
+| Tabel | Keterangan |
+|---|---|
+| `wallets` | Wallet + saldo native terakhir |
+| `wallet_balances` | Saldo native & token per wallet/jaringan (hasil watcher) |
+| `network_summaries` | Ringkasan saldo per wallet/jaringan |
+| `tokens` | Metadata token yang dipantau (ERC-20/SPL) |
+| `rpc_configs` | Endpoint RPC + WSS per jaringan |
+| `transactions` | Riwayat transaksi |
+| `contacts` | Kontak alamat wallet |
+| `settings` | Pengaturan aplikasi |
+| `security_settings` | PIN/biometric/auto-lock |
+| `backup_history` | Riwayat backup |
+| `portfolio_summary`, `portfolio_tokens`, `network_assets` | Data portfolio |
+| `documents` | Penyimpanan JSON generik (dipakai `pkg/crud`) |
 
 ## Rute
 
-| Method | Path | Keterangan |
+Semua endpoint fitur ada di bawah `/api/v1`. **Handler-nya masih placeholder
+`501 Not Implemented`**, kecuali `/`, `/api/v1/health`, dan watcher saldo yang
+berjalan di background.
+
+| Method | Path | Fitur |
 |---|---|---|
 | GET | `/` | Info server |
-| GET | `/api/health` | Status API + database |
-| GET | `/api/auth/me` | Placeholder user |
-| POST | `/api/auth/logout` | Placeholder logout |
-| GET | `/api/dashboard` | Placeholder dashboard |
-| GET | `/api/analytics` | Placeholder analytics |
-| GET/PUT | `/api/settings` | Placeholder settings |
-| POST | `/api/settings/avatar` | Placeholder upload avatar |
-| GET/POST | `/api/tasks` | Placeholder list/tambah task |
-| GET/PUT/PATCH/DELETE | `/api/tasks/{id}` | Placeholder detail/ubah/hapus |
-| GET/POST | `/api/projects` | Placeholder list/tambah project |
-| GET/PUT/PATCH/DELETE | `/api/projects/{id}` | Placeholder detail/ubah/hapus |
-| GET/POST | `/api/team` | Placeholder list/tambah anggota |
-| GET/PUT/PATCH/DELETE | `/api/team/{id}` | Placeholder detail/ubah/hapus |
-| GET/POST | `/api/reminders` | Placeholder list/tambah reminder |
-| GET/PUT/PATCH/DELETE | `/api/reminders/{id}` | Placeholder detail/ubah/hapus |
-| GET/POST | `/api/calendar/events` | Placeholder list/tambah event |
-| GET/PUT/PATCH/DELETE | `/api/calendar/events/{id}` | Placeholder detail/ubah/hapus |
-| GET/POST | `/api/time-entries` | Placeholder list/tambah time entry |
-| GET/PUT/PATCH/DELETE | `/api/time-entries/{id}` | Placeholder detail/ubah/hapus |
+| GET | `/api/v1/health` | Health check |
+| GET | `/api/v1/wallets` | Daftar wallet |
+| POST | `/api/v1/wallets` | Tambah wallet |
+| GET | `/api/v1/wallets/{walletID}` | Detail wallet (termasuk alamat) |
+| GET | `/api/v1/wallets/{walletID}/balance` | Saldo wallet + ringkasan per jaringan |
+| POST | `/api/v1/wallets/{walletID}/send` | Kirim aset |
+| GET | `/api/v1/wallets/{walletID}/receive` | Alamat/QR receive |
+| DELETE | `/api/v1/wallets/{walletID}` | Hapus wallet |
+| GET | `/api/v1/portfolio/summary` | Total aset |
+| GET | `/api/v1/portfolio/tokens` | Daftar token + saldo |
+| GET | `/api/v1/portfolio/networks` | Rincian aset per jaringan |
+| GET | `/api/v1/transactions` | Riwayat transaksi |
+| GET | `/api/v1/transactions/{txHash}` | Detail transaksi |
+| GET | `/api/v1/transactions/{txHash}/status` | Status transaksi |
+| GET | `/api/v1/contacts` | Daftar kontak |
+| POST | `/api/v1/contacts` | Simpan kontak |
+| GET | `/api/v1/contacts/{contactID}` | Detail kontak |
+| PUT | `/api/v1/contacts/{contactID}` | Edit kontak |
+| DELETE | `/api/v1/contacts/{contactID}` | Hapus kontak |
+| POST | `/api/v1/settings/wallets/create` | Buat wallet baru |
+| POST | `/api/v1/settings/wallets/import` | Impor wallet |
+| GET | `/api/v1/settings/rpc` | Daftar RPC/WSS |
+| PUT | `/api/v1/settings/rpc` | Ubah RPC/WSS |
+| GET | `/api/v1/settings/security` | Baca pengaturan keamanan |
+| PUT | `/api/v1/settings/security` | Ubah pengaturan keamanan |
+| GET | `/api/v1/settings/backup` | Info backup |
+| POST | `/api/v1/settings/backup` | Buat backup |
 | GET | `/avatars/*` | File avatar dari `data/avatars` |
 
-Contoh response placeholder:
-
-```json
-{
-  "resource": "tasks",
-  "message": "placeholder"
-}
-```
+Tidak ada endpoint dashboard, analytics, tasks, projects, team, reminders,
+calendar, time-entries, atau auth. Path yang tidak terdaftar akan mendapat
+`404 {"error":"not found"}`.
 
 ## Mengisi logika
 
@@ -260,9 +224,9 @@ Panduan lengkap ada di [`CONTRIBUTING.md`](./CONTRIBUTING.md).
    - Backup
 
 ### 🏦 Jaringan yang Didukung:
-- **EVM Networks**: Ethereum, BNB Chain, Arbitrum, Polygon
-- **Non-EVM**: Solana
-- **Testnets**: Sepolia, BSC Testnet, Arbitrum Sepolia, Solana Devnet
+- **EVM**: Ethereum Mainnet, BNB Chain, Arbitrum One, Robinhood Chain
+- **Non-EVM**: Solana Mainnet
+- **Devnet**: Solana Devnet (opsional, endpoint dari konfigurasi)
 
 ## 📁 Struktur Folder Backend
 
@@ -307,7 +271,7 @@ backend/
 
 4. **Run server:**
    ```bash
-   go run cmd/api/main.go
+   go run ./cmd/api
    ```
 
 5. **API akan berjalan di:** `http://localhost:5009`
@@ -318,36 +282,39 @@ backend/
 
 #### Wallet Endpoints:
 - `GET /wallets` - List all wallets
-- `POST /wallets` - Create new wallet
-- `GET /wallets/{id}` - Get wallet detail
-- `GET /wallets/{id}/balance` - Get wallet balance
+- `POST /wallets` - Tambah wallet
+- `GET /wallets/{id}` - Detail wallet (termasuk alamat)
+- `GET /wallets/{id}/balance` - Saldo wallet + ringkasan per jaringan
 - `POST /wallets/{id}/send` - Send transaction
-- `GET /wallets/{id}/receive` - Get receive address
+- `GET /wallets/{id}/receive` - Alamat/QR receive
+- `DELETE /wallets/{id}` - Hapus wallet
 
 #### Portfolio Endpoints:
-- `GET /portfolio/summary` - Portfolio summary
-- `GET /portfolio/tokens` - List all tokens
-- `GET /portfolio/networks` - Network breakdown
+- `GET /portfolio/summary` - Total aset
+- `GET /portfolio/tokens` - Daftar token + saldo
+- `GET /portfolio/networks` - Rincian aset per jaringan
 
 #### Transaction Endpoints:
-- `GET /transactions` - Transaction history
-- `GET /transactions/{txHash}` - Transaction detail
-- `GET /transactions/{txHash}/status` - Transaction status
+- `GET /transactions` - Riwayat transaksi
+- `GET /transactions/{txHash}` - Detail transaksi
+- `GET /transactions/{txHash}/status` - Status transaksi
 
 #### Contact Endpoints:
-- `GET /contacts` - List contacts
-- `POST /contacts` - Create contact
-- `PUT /contacts/{id}` - Update contact
-- `DELETE /contacts/{id}` - Delete contact
+- `GET /contacts` - Daftar kontak
+- `POST /contacts` - Simpan kontak
+- `GET /contacts/{id}` - Detail kontak
+- `PUT /contacts/{id}` - Edit kontak
+- `DELETE /contacts/{id}` - Hapus kontak
 
 #### Setting Endpoints:
-- `POST /settings/wallets/create` - Create wallet
-- `POST /settings/wallets/import` - Import wallet
-- `GET /settings/rpc` - List RPC configs
-- `PUT /settings/rpc` - Update RPC config
-- `GET /settings/security` - Get security settings
-- `PUT /settings/security` - Update security settings
-- `POST /settings/backup` - Create backup
+- `POST /settings/wallets/create` - Buat wallet baru
+- `POST /settings/wallets/import` - Impor wallet
+- `GET /settings/rpc` - Daftar RPC/WSS
+- `PUT /settings/rpc` - Ubah RPC/WSS
+- `GET /settings/security` - Baca pengaturan keamanan
+- `PUT /settings/security` - Ubah pengaturan keamanan
+- `GET /settings/backup` - Info backup
+- `POST /settings/backup` - Buat backup
 
 ## 🔐 Security Features
 
