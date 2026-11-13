@@ -83,7 +83,7 @@ backend/
 │       ├── models/         api.go
 │       └── types/          types.go
 ├── pkg/
-│   ├── auth/               middleware.go, service.go, token.go
+│   ├── auth/               handler.go, middleware.go, service.go, token.go
 │   ├── crud/               generic.go, pagination.go
 │   ├── logger/             log.go
 │   ├── response/           json.go
@@ -281,11 +281,10 @@ walletGroup := apiV1.Group("/wallets")
 walletGroup.Post("/:walletID/send", walletH.Send)
 ```
 
-Saat ini handler modul masih skeleton (`501 Not Implemented`), tetapi sudah
-terhubung ke `router.go`. Ganti isi method di `internal/modules/*/handler.go`
-dengan logika nyata; route tidak perlu diubah lagi. Tidak ada helper
-`registerCRUD`; daftarkan route secara eksplisit supaya path tetap sesuai
-5 fitur.
+Saat ini handler modul masih skeleton dan `router.go` memakai placeholder
+inline. Setelah handler diimplementasikan, ganti placeholder tersebut dengan
+method handler aslinya. Helper `registerCRUD` masih tersedia di `router.go`,
+tetapi route 5 fitur didaftarkan eksplisit agar path-nya tetap sesuai.
 
 ### E. Memakai pagination di endpoint list
 

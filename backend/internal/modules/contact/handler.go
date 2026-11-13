@@ -6,32 +6,31 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// Handler adalah skeleton endpoint Contact.
+// Handler adalah skeleton endpoint Team.
 type Handler struct{ svc *Service }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
-// List menampilkan daftar kontak.
 func (h *Handler) List(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "contacts")
+	return response.SendPlaceholder(c, fiber.StatusOK, "team")
 }
 
-// Create menyimpan kontak alamat wallet.
-func (h *Handler) Create(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "contacts")
-}
-
-// Get menampilkan detail kontak.
 func (h *Handler) Get(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "contacts")
+	return response.SendPlaceholder(c, fiber.StatusOK, "team")
 }
 
-// Update mengubah kontak.
+func (h *Handler) Create(c fiber.Ctx) error {
+	return response.SendPlaceholder(c, fiber.StatusCreated, "team")
+}
+
 func (h *Handler) Update(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "contacts")
+	return response.SendPlaceholder(c, fiber.StatusOK, "team")
 }
 
-// Delete menghapus kontak.
+func (h *Handler) Patch(c fiber.Ctx) error {
+	return response.SendPlaceholder(c, fiber.StatusOK, "team")
+}
+
 func (h *Handler) Delete(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "contacts")
+	return response.SendPlaceholder(c, fiber.StatusOK, "team")
 }

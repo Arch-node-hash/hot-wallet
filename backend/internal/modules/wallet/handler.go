@@ -6,42 +6,42 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// Handler adalah skeleton endpoint Wallet.
+// Handler adalah skeleton endpoint Dashboard.
 type Handler struct{ svc *Service }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
-// List menampilkan daftar wallet.
-func (h *Handler) List(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "wallets")
-}
-
-// Create menambah wallet.
-func (h *Handler) Create(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "wallets")
-}
-
-// Get menampilkan detail wallet (termasuk alamat).
 func (h *Handler) Get(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "wallets")
+	return response.SendPlaceholder(c, fiber.StatusOK, "dashboard")
 }
 
-// Balance menampilkan saldo wallet dan ringkasan per jaringan.
-func (h *Handler) Balance(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "wallets/balance")
+// TimeEntryHandler adalah skeleton endpoint Time Entry.
+type TimeEntryHandler struct{ svc *TimeEntryService }
+
+func NewTimeEntryHandler(svc *TimeEntryService) *TimeEntryHandler {
+	return &TimeEntryHandler{svc: svc}
 }
 
-// Send mengirim aset dari wallet.
-func (h *Handler) Send(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "wallets/send")
+func (h *TimeEntryHandler) List(c fiber.Ctx) error {
+	return response.SendPlaceholder(c, fiber.StatusOK, "time-entries")
 }
 
-// Receive menampilkan alamat/QR untuk menerima aset.
-func (h *Handler) Receive(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "wallets/receive")
+func (h *TimeEntryHandler) Get(c fiber.Ctx) error {
+	return response.SendPlaceholder(c, fiber.StatusOK, "time-entries")
 }
 
-// Delete menghapus wallet.
-func (h *Handler) Delete(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusNotImplemented, "wallets")
+func (h *TimeEntryHandler) Create(c fiber.Ctx) error {
+	return response.SendPlaceholder(c, fiber.StatusCreated, "time-entries")
+}
+
+func (h *TimeEntryHandler) Update(c fiber.Ctx) error {
+	return response.SendPlaceholder(c, fiber.StatusOK, "time-entries")
+}
+
+func (h *TimeEntryHandler) Patch(c fiber.Ctx) error {
+	return response.SendPlaceholder(c, fiber.StatusOK, "time-entries")
+}
+
+func (h *TimeEntryHandler) Delete(c fiber.Ctx) error {
+	return response.SendPlaceholder(c, fiber.StatusOK, "time-entries")
 }
