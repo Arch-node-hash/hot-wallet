@@ -92,12 +92,12 @@ backend/
 │   │   ├── store/           # SQLite, schema, saldo, rpc_configs
 │   │   ├── security/        # Enkripsi/kunci
 │   │   └── health/
-│   ├── modules/             # Skeleton handler/service per fitur
-│   │   ├── wallet/
-│   │   ├── portfolio/
-│   │   ├── transaction/
-│   │   ├── contact/
-│   │   └── setting/
+│   ├── modules/             # Satu paket per fitur (handler + service + model)
+│   │   ├── wallet/          # handler.go, service.go, model.go
+│   │   ├── portfolio/       # handler.go, service.go, model.go
+│   │   ├── transaction/     # handler.go, service.go, model.go
+│   │   ├── contact/         # handler.go, service.go, model.go
+│   │   └── setting/         # handler.go, service.go, model.go
 │   └── shared/              # Model, interface, error
 ├── pkg/
 │   ├── auth/
@@ -244,11 +244,11 @@ backend/
 │   │   ├── store/         # Database layer
 │   │   └── security/      # Key management
 │   ├── modules/           # Business logic per halaman
-│   │   ├── wallet/
-│   │   ├── portfolio/
-│   │   ├── transaction/
-│   │   ├── contact/
-│   │   └── setting/
+│   │   ├── wallet/        # handler.go, service.go, model.go
+│   │   ├── portfolio/     # handler.go, service.go, model.go
+│   │   ├── transaction/   # handler.go, service.go, model.go
+│   │   ├── contact/       # handler.go, service.go, model.go
+│   │   └── setting/       # handler.go, service.go, model.go
 │   └── shared/
 │       ├── models/        # Data models
 │       └── interfaces/    # Service interfaces
