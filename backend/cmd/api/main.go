@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -20,20 +19,12 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Identitas wallet: seed phrase BIP39. Kalau belum ada di environment,
-	// buat 12 kata acak dan simpan ke .env supaya alamat tetap sama setelah
-	// restart. File .env tidak ikut git.
+	// Seed phrase diisi manual di .env (WALLET_MNEMONIC). Server hanya
+	// memeriksa formatnya supaya tidak diam-diam memakai seed yang salah.
 	if cfg.WalletMnemonic == "" {
-		mnemonic, err := wallet.NewMnemonic(12)
-		if err != nil {
-			log.Fatalf("wallet: %v", err)
-		}
-		envPath := filepath.Join(cfg.Root, ".env")
-		if err := config.SaveEnvValue(envPath, "WALLET_MNEMONIC", mnemonic); err != nil {
-			log.Printf("warning: simpan seed phrase ke .env: %v", err)
-		}
-		cfg.WalletMnemonic = mnemonic
-		log.Printf("seed phrase wallet dibuat dan disimpan di %s", envPath)
+		log.Printf("warning: WALLET_MNEMONIC kosong, isi seed phrase 12 kata di .env")
+	} else if !wallet.ValidateMnemonic(cfg.WalletMnemonic) {
+		log.Printf("warning: WALLET_MNEMONIC bukan seed phrase BIP39 yang valid")
 	}
 
 	st, err := store.Open(cfg.DBPath)

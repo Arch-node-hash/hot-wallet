@@ -197,8 +197,8 @@ sol, err := wallet.DeriveSolana(mnemonic, "", 0) // m/44'/501'/0'/0'
 
 `DeriveEVM` menghasilkan alamat ber-checksum EIP-55, `DeriveSolana`
 menghasilkan alamat base58 ed25519. Seed dibaca dari `WALLET_MNEMONIC` di
-`.env`; bila kosong, `cmd/api` membuat satu secara acak dan menuliskannya ke
-`.env`. Jangan menyimpan seed/private key ke tabel `wallets`.
+`.env` dan **diisi manual**; server hanya memvalidasi formatnya saat startup.
+Jangan menyimpan seed/private key ke tabel `wallets`.
 
 ### `pkg/auth/token.go`
 

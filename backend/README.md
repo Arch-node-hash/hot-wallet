@@ -47,7 +47,7 @@ Semua lewat environment variable (atau file `backend/.env`):
 | `WS_WATCHER_ENABLED` | `true`    | Nyalakan watcher saldo real-time    |
 | `WS_DEBOUNCE` | `4s`             | Jarak minimum refresh per blok (EVM) |
 | `WS_REFRESH` | `30s`             | Refresh periodik cadangan           |
-| `WALLET_MNEMONIC` | *(dibuat otomatis)* | Seed phrase BIP39 12 kata untuk identitas wallet |
+| `WALLET_MNEMONIC` | *(wajib diisi)* | Seed phrase BIP39 12 kata untuk identitas wallet |
 
 Endpoint WebSocket **tidak di-hardcode** di source. Saat pertama dijalankan,
 nilai dari env di-seed ke tabel `rpc_configs.wss_url`; setelah itu nilainya
@@ -72,10 +72,17 @@ Hasil ditulis ke `wallet_balances`, `wallets.balance` (native), dan
 
 ## Seed phrase & identitas wallet
 
-Identitas wallet memakai **seed phrase BIP39** (12 kata). Saat server pertama
-kali dijalankan dan `WALLET_MNEMONIC` masih kosong, server membuat seed acak
-lalu menuliskannya ke `backend/.env`. File `.env` tidak ikut git — **backup
-file itu**, karena seed yang sama diperlukan untuk memulihkan semua alamat.
+Identitas wallet memakai **seed phrase BIP39** (12 kata). Isi seed secara
+manual di `backend/.env`:
+
+```
+WALLET_MNEMONIC=dua belas kata seed phrase kamu di sini
+```
+
+Server **tidak** membuat atau menulis seed otomatis. Kalau `WALLET_MNEMONIC`
+kosong atau formatnya tidak valid, server hanya menampilkan warning saat
+startup. File `.env` tidak ikut git — **backup file itu**, karena seed yang sama
+diperlukan untuk memulihkan semua alamat.
 
 Dari satu seed, alamat diturunkan secara HD:
 
