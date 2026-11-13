@@ -12,6 +12,11 @@ import (
 
 	"hotwallet/backend/config"
 	"hotwallet/backend/internal/infrastructure/store"
+	"hotwallet/backend/internal/modules/contact"
+	"hotwallet/backend/internal/modules/portfolio"
+	"hotwallet/backend/internal/modules/setting"
+	"hotwallet/backend/internal/modules/transaction"
+	"hotwallet/backend/internal/modules/wallet"
 )
 
 // New merakit aplikasi Fiber beserta seluruh route skeleton.
@@ -36,10 +41,7 @@ func New(cfg config.Config, st *store.Store) *fiber.App {
 		AllowHeaders: []string{"Content-Type", "Authorization"},
 	}))
 
-	// Services (placeholder - nanti akan diimplementasikan)
-	// TODO: Implement service interfaces dari internal/shared/interfaces
-
-	// API v1 Routes (menggunakan struktur 5 halaman)
+	// API v1 Routes (5 fitur: Wallet, Portfolio, Transaction, Contact, Setting)
 	setupAPIV1Routes(app)
 
 	// Avatar disimpan di data/avatars.
@@ -72,9 +74,8 @@ func New(cfg config.Config, st *store.Store) *fiber.App {
 	return app
 }
 
-// setupAPIV1Routes mengatur semua route untuk API v1
+// setupAPIV1Routes mengatur semua route untuk API v1.
 func setupAPIV1Routes(app *fiber.App) {
-	// API v1 routes
 	apiV1 := app.Group("/api/v1")
 
 	// Health check
@@ -82,100 +83,53 @@ func setupAPIV1Routes(app *fiber.App) {
 		return c.JSON(fiber.Map{"status": "ok", "timestamp": time.Now().UTC()})
 	})
 
-	// Wallet endpoints
+	// Wallet
+	walletH := wallet.NewHandler(wallet.NewService())
 	walletGroup := apiV1.Group("/wallets")
-	walletGroup.Get("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Wallet list - not implemented"})
-	})
-	walletGroup.Post("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Wallet create - not implemented"})
-	})
+	walletGroup.Get("/", walletH.List)
+	walletGroup.Post("/", walletH.Create)
 
 	walletIDGroup := walletGroup.Group("/:walletID")
-	walletIDGroup.Get("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Wallet detail - not implemented"})
-	})
-	walletIDGroup.Get("/balance", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Wallet balance - not implemented"})
-	})
-	walletIDGroup.Post("/send", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Wallet send - not implemented"})
-	})
-	walletIDGroup.Get("/receive", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Wallet receive - not implemented"})
-	})
-	walletIDGroup.Delete("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Wallet delete - not implemented"})
-	})
+	walletIDGroup.Get("/", walletH.Get)
+	walletIDGroup.Delete("/", walletH.Delete)
+	walletIDGroup.Get("/balance", walletH.Balance)
+	walletIDGroup.Post("/send", walletH.Send)
+	walletIDGroup.Get("/receive", walletH.Receive)
 
-	// Portfolio endpoints
+	// Portfolio
+	portfolioH := portfolio.NewHandler(portfolio.NewService())
 	portfolioGroup := apiV1.Group("/portfolio")
-	portfolioGroup.Get("/summary", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Portfolio summary - not implemented"})
-	})
-	portfolioGroup.Get("/tokens", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Portfolio tokens - not implemented"})
-	})
-	portfolioGroup.Get("/networks", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Portfolio networks - not implemented"})
-	})
+	portfolioGroup.Get("/summary", portfolioH.Summary)
+	portfolioGroup.Get("/tokens", portfolioH.Tokens)
+	portfolioGroup.Get("/networks", portfolioH.Networks)
 
-	// Transaction endpoints
+	// Transaction
+	transactionH := transaction.NewHandler(transaction.NewService())
 	transactionGroup := apiV1.Group("/transactions")
-	transactionGroup.Get("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Transaction list - not implemented"})
-	})
-	transactionGroup.Get("/:txHash", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Transaction detail - not implemented"})
-	})
-	transactionGroup.Get("/:txHash/status", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Transaction status - not implemented"})
-	})
+	transactionGroup.Get("/", transactionH.List)
+	transactionGroup.Get("/:txHash", transactionH.Get)
+	transactionGroup.Get("/:txHash/status", transactionH.Status)
 
-	// Contact endpoints
+	// Contact
+	contactH := contact.NewHandler(contact.NewService())
 	contactGroup := apiV1.Group("/contacts")
-	contactGroup.Get("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Contact list - not implemented"})
-	})
-	contactGroup.Post("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Contact create - not implemented"})
-	})
+	contactGroup.Get("/", contactH.List)
+	contactGroup.Post("/", contactH.Create)
 
 	contactIDGroup := contactGroup.Group("/:contactID")
-	contactIDGroup.Get("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Contact detail - not implemented"})
-	})
-	contactIDGroup.Put("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Contact update - not implemented"})
-	})
-	contactIDGroup.Delete("/", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Contact delete - not implemented"})
-	})
+	contactIDGroup.Get("/", contactH.Get)
+	contactIDGroup.Put("/", contactH.Update)
+	contactIDGroup.Delete("/", contactH.Delete)
 
-	// Setting endpoints
+	// Setting
+	settingH := setting.NewHandler(setting.NewService())
 	settingGroup := apiV1.Group("/settings")
-	settingGroup.Post("/wallets/create", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Setting create wallet - not implemented"})
-	})
-	settingGroup.Post("/wallets/import", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Setting import wallet - not implemented"})
-	})
-	settingGroup.Get("/rpc", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Setting RPC list - not implemented"})
-	})
-	settingGroup.Put("/rpc", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Setting RPC update - not implemented"})
-	})
-	settingGroup.Get("/security", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Setting security get - not implemented"})
-	})
-	settingGroup.Put("/security", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Setting security update - not implemented"})
-	})
-	settingGroup.Get("/backup", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Setting backup get - not implemented"})
-	})
-	settingGroup.Post("/backup", func(c fiber.Ctx) error {
-		return c.Status(501).JSON(fiber.Map{"message": "Setting backup create - not implemented"})
-	})
+	settingGroup.Post("/wallets/create", settingH.CreateWallet)
+	settingGroup.Post("/wallets/import", settingH.ImportWallet)
+	settingGroup.Get("/rpc", settingH.ListRPC)
+	settingGroup.Put("/rpc", settingH.UpdateRPC)
+	settingGroup.Get("/security", settingH.GetSecurity)
+	settingGroup.Put("/security", settingH.UpdateSecurity)
+	settingGroup.Get("/backup", settingH.GetBackup)
+	settingGroup.Post("/backup", settingH.CreateBackup)
 }

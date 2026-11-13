@@ -113,8 +113,8 @@ backend/
 └── CONTRIBUTING.md
 ```
 
-Handler fitur di `internal/modules/*` masih skeleton; routing saat ini memakai
-placeholder inline di `router.go`. Watcher saldo dan penyimpanan ke database
+Handler fitur di `internal/modules/*` masih skeleton (mengembalikan `501`) dan
+sudah terhubung ke `router.go`. Watcher saldo dan penyimpanan ke database
 sudah berjalan.
 
 Alur request:
