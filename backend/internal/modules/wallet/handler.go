@@ -6,13 +6,13 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// Handler adalah skeleton endpoint Dashboard.
+// Handler adalah skeleton endpoint Wallet.
 type Handler struct{ svc *Service }
 
 func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) Get(c fiber.Ctx) error {
-	return response.SendPlaceholder(c, fiber.StatusOK, "dashboard")
+	return response.SendPlaceholder(c, fiber.StatusOK, "wallet")
 }
 
 // TimeEntryHandler adalah skeleton endpoint Time Entry.

@@ -20,14 +20,14 @@ type Progress struct {
 	Pending    int `json:"pending"`
 }
 
-// RawData adalah struktur data dashboard dari koleksi "dashboard".
+// RawData adalah struktur data wallet dari koleksi "wallet".
 type RawData struct {
 	Stats          []portfolio.Stat `json:"stats"`
 	WeeklyActivity []WeeklyActivity `json:"weekly_activity"`
 	Progress       Progress         `json:"progress"`
 }
 
-// User adalah data user minimal untuk dashboard
+// User adalah data user minimal untuk wallet
 type User struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -54,7 +54,7 @@ type TimeEntry struct {
 func (e TimeEntry) GetID() string    { return e.ID }
 func (e *TimeEntry) SetID(id string) { e.ID = id }
 
-// Response adalah agregasi data dashboard.
+// Response adalah agregasi data wallet.
 type Response struct {
 	User           User                  `json:"user"`
 	Stats          []portfolio.Stat      `json:"stats"`

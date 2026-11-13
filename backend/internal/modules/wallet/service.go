@@ -1,6 +1,6 @@
 package wallet
 
-// Service adalah skeleton service Dashboard.
+// Service adalah skeleton service Wallet.
 // TODO: tambahkan dependency (repo/store) dan implementasikan method-nya.
 type Service struct{}
 
