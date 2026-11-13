@@ -1,0 +1,13 @@
+# Backend Go
+/backend/bin/
+/backend/api
+/backend/.env
+
+# SQLite
+/backend/data/*.db-shm
+/backend/data/*.db-wal
+/backend/data/backups/
+
+# Editor / OS
+.DS_Store
+*.swp
