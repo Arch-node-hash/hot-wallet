@@ -22,8 +22,9 @@ type Config struct {
 	// Security
 	EncryptionKey string
 
-	// Wallet identity (BIP39 seed phrase), diisi manual di .env.
-	WalletMnemonic string
+	// Private keys untuk wallet (tanpa seed phrase)
+	ETHPrivateKey    string
+	SolanaPrivateKey string
 
 	// Backup
 	BackupDir string
@@ -81,7 +82,8 @@ func Load() Config {
 		DefaultNetwork:   env("DEFAULT_NETWORK", "ethereum"),
 		EnableTestnets:   env("ENABLE_TESTNETS", "false") == "true",
 		EncryptionKey:    env("ENCRYPTION_KEY", ""),
-		WalletMnemonic:   env("WALLET_MNEMONIC", ""),
+		ETHPrivateKey:    env("ETH_PRIVATE_KEY", ""),
+		SolanaPrivateKey: env("SOLANA_PRIVATE_KEY", ""),
 		BackupDir:        filepath.Join(dataDir, "backups"),
 		RPCEndpoints:     rpcEndpoints,
 		WSSEndpoints:     wssEndpoints,

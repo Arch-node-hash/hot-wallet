@@ -188,17 +188,18 @@ err = st.Restore(path)           // salin isi backup ke database aktif
 ### `internal/blockchain/wallet`
 
 ```go
-mnemonic, err := wallet.NewMnemonic(12)       // BIP39, 12 kata
-ok := wallet.ValidateMnemonic(mnemonic)       // checksum + wordlist
-
-evm, err := wallet.DeriveEVM(mnemonic, "", 0)    // m/44'/60'/0'/0/0
-sol, err := wallet.DeriveSolana(mnemonic, "", 0) // m/44'/501'/0'/0'
+// Menggunakan private key langsung dari environment variables
+// ETH_PRIVATE_KEY dan SOLANA_PRIVATE_KEY
 ```
 
-`DeriveEVM` menghasilkan alamat ber-checksum EIP-55, `DeriveSolana`
-menghasilkan alamat base58 ed25519. Seed dibaca dari `WALLET_MNEMONIC` di
-`.env` dan **diisi manual**; server hanya memvalidasi formatnya saat startup.
-Jangan menyimpan seed/private key ke tabel `wallets`.
+Wallet menggunakan private key langsung tanpa seed phrase:
+- `ETH_PRIVATE_KEY` untuk Ethereum & EVM chains (64 hex, `0x` opsional).
+  Satu key ini membuat satu wallet per jaringan EVM dengan alamat yang sama.
+- `SOLANA_PRIVATE_KEY` untuk Solana (base58/hex 32 atau 64 byte, atau JSON
+  array `solana-keygen`). Kurva ed25519, jadi tidak bisa memakai key EVM.
+
+Private keys dibaca dari environment variable dan **tidak disimpan ke database**.
+Saat startup, `AutoCreateWalletFromEnv` membuat wallet yang belum ada.
 
 ### `pkg/auth/token.go`
 
@@ -422,8 +423,6 @@ PORT=5022 /tmp/hotwallet-api
 | GET | `/api/v1/transactions/:txHash/status` |
 | GET/POST | `/api/v1/contacts` |
 | GET/PUT/DELETE | `/api/v1/contacts/:contactID` |
-| POST | `/api/v1/settings/wallets/create` |
-| POST | `/api/v1/settings/wallets/import` |
 | GET/PUT | `/api/v1/settings/rpc` |
 | GET/PUT | `/api/v1/settings/security` |
 | GET/POST | `/api/v1/settings/backup` |

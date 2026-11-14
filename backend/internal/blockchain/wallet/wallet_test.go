@@ -1,7 +1,9 @@
 package wallet
 
 import (
+	"crypto/ed25519"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -80,5 +82,51 @@ func TestDeriveSolana(t *testing.T) {
 func TestBase58Encode(t *testing.T) {
 	if got := base58Encode([]byte{0, 0, 1}); got != "112" {
 		t.Fatalf("base58 = %s, mau 112", got)
+	}
+}
+
+func TestParseSolanaPrivateKeyFormats(t *testing.T) {
+	seed := make([]byte, 32)
+	for i := range seed {
+		seed[i] = byte(i)
+	}
+
+	fromSeed, err := ParseSolanaPrivateKey(base58Encode(seed))
+	if err != nil {
+		t.Fatalf("base58 seed: %v", err)
+	}
+
+	// Keypair 64 byte = seed + public key (format export Phantom/solana-keygen).
+	keypair := ed25519.NewKeyFromSeed(seed)
+	fromKeypair, err := ParseSolanaPrivateKey(base58Encode(keypair))
+	if err != nil {
+		t.Fatalf("base58 keypair: %v", err)
+	}
+	if fromKeypair.Address != fromSeed.Address {
+		t.Fatalf("alamat keypair %s != seed %s", fromKeypair.Address, fromSeed.Address)
+	}
+
+	fromHex, err := ParseSolanaPrivateKey("0x" + hex.EncodeToString(seed))
+	if err != nil {
+		t.Fatalf("hex seed: %v", err)
+	}
+	if fromHex.Address != fromSeed.Address {
+		t.Fatalf("alamat hex %s != seed %s", fromHex.Address, fromSeed.Address)
+	}
+
+	nums := make([]string, len(keypair))
+	for i, b := range keypair {
+		nums[i] = fmt.Sprint(b)
+	}
+	fromJSON, err := ParseSolanaPrivateKey("[" + strings.Join(nums, ",") + "]")
+	if err != nil {
+		t.Fatalf("json keypair: %v", err)
+	}
+	if fromJSON.Address != fromSeed.Address {
+		t.Fatalf("alamat json %s != seed %s", fromJSON.Address, fromSeed.Address)
+	}
+
+	if _, err := ParseSolanaPrivateKey("5JRaypasxMx1L97ZUX7YuKC5NpLJ7bRjv7Z5wP5JvF1qG"); err == nil {
+		t.Fatal("key 33 byte seharusnya ditolak")
 	}
 }

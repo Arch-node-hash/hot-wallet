@@ -23,43 +23,43 @@ type Wallet struct {
 }
 
 type WalletBalance struct {
-	WalletID      string `json:"wallet_id"`
-	Network       string `json:"network"`
-	TokenAddress  string `json:"token_address,omitempty"`
-	TokenSymbol   string `json:"token_symbol"`
-	Balance       string `json:"balance"`
-	ValueUSD      string `json:"value_usd"`
-	UpdatedAt     string `json:"updated_at"`
+	WalletID     string `json:"wallet_id"`
+	Network      string `json:"network"`
+	TokenAddress string `json:"token_address,omitempty"`
+	TokenSymbol  string `json:"token_symbol"`
+	Balance      string `json:"balance"`
+	ValueUSD     string `json:"value_usd"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 type NetworkSummary struct {
-	WalletID       string `json:"wallet_id"`
-	Network        string `json:"network"`
-	TotalBalance   string `json:"total_balance"`
-	TotalValueUSD  string `json:"total_value_usd"`
-	TokenCount     int    `json:"token_count"`
-	UpdatedAt      string `json:"updated_at"`
+	WalletID      string `json:"wallet_id"`
+	Network       string `json:"network"`
+	TotalBalance  string `json:"total_balance"`
+	TotalValueUSD string `json:"total_value_usd"`
+	TokenCount    int    `json:"token_count"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 // Portfolio models
 type PortfolioSummary struct {
-	TotalAssets    string `json:"total_assets"`
-	TotalValueUSD  string `json:"total_value_usd"`
-	NetworkCount   int    `json:"network_count"`
-	TokenCount     int    `json:"token_count"`
-	UpdatedAt      string `json:"updated_at"`
+	TotalAssets   string `json:"total_assets"`
+	TotalValueUSD string `json:"total_value_usd"`
+	NetworkCount  int    `json:"network_count"`
+	TokenCount    int    `json:"token_count"`
+	UpdatedAt     string `json:"updated_at"`
 }
 
 type PortfolioToken struct {
-	WalletID      string `json:"wallet_id"`
-	Network       string `json:"network"`
-	TokenAddress  string `json:"token_address,omitempty"`
-	TokenSymbol   string `json:"token_symbol"`
-	TokenName     string `json:"token_name,omitempty"`
-	Balance       string `json:"balance"`
-	PriceUSD      string `json:"price_usd"`
-	ValueUSD      string `json:"value_usd"`
-	UpdatedAt     string `json:"updated_at"`
+	WalletID     string `json:"wallet_id"`
+	Network      string `json:"network"`
+	TokenAddress string `json:"token_address,omitempty"`
+	TokenSymbol  string `json:"token_symbol"`
+	TokenName    string `json:"token_name,omitempty"`
+	Balance      string `json:"balance"`
+	PriceUSD     string `json:"price_usd"`
+	ValueUSD     string `json:"value_usd"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 type NetworkAsset struct {
@@ -123,13 +123,13 @@ type SecuritySetting struct {
 }
 
 type BackupHistory struct {
-	ID        string    `json:"id"`
-	BackupType string   `json:"backup_type"`
-	BackupDate string   `json:"backup_date"`
-	FilePath  string    `json:"file_path,omitempty"`
-	Encrypted bool      `json:"encrypted"`
-	Notes     string    `json:"notes,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+	BackupType string    `json:"backup_type"`
+	BackupDate string    `json:"backup_date"`
+	FilePath   string    `json:"file_path,omitempty"`
+	Encrypted  bool      `json:"encrypted"`
+	Notes      string    `json:"notes,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Request models
@@ -141,7 +141,6 @@ type CreateWalletRequest struct {
 
 type ImportWalletRequest struct {
 	Name           string `json:"name"`
-	Mnemonic       string `json:"mnemonic,omitempty"`
 	PrivateKey     string `json:"private_key,omitempty"`
 	Network        string `json:"network"`
 	DerivationPath string `json:"derivation_path,omitempty"`
@@ -165,9 +164,9 @@ type CreateContactRequest struct {
 }
 
 type UpdateSecurityRequest struct {
-	PIN             string `json:"pin,omitempty"`
+	PIN              string `json:"pin,omitempty"`
 	BiometricEnabled *bool  `json:"biometric_enabled,omitempty"`
-	AutoLockMinutes *int   `json:"auto_lock_minutes,omitempty"`
+	AutoLockMinutes  *int   `json:"auto_lock_minutes,omitempty"`
 }
 
 type BackupRequest struct {

@@ -19,12 +19,18 @@ import (
 func main() {
 	cfg := config.Load()
 
-	// Seed phrase diisi manual di .env (WALLET_MNEMONIC). Server hanya
-	// memeriksa formatnya supaya tidak diam-diam memakai seed yang salah.
-	if cfg.WalletMnemonic == "" {
-		log.Printf("warning: WALLET_MNEMONIC kosong, isi seed phrase 12 kata di .env")
-	} else if !wallet.ValidateMnemonic(cfg.WalletMnemonic) {
-		log.Printf("warning: WALLET_MNEMONIC bukan seed phrase BIP39 yang valid")
+	// Private keys untuk wallet (tanpa seed phrase)
+	// ETH_PRIVATE_KEY dan SOLANA_PRIVATE_KEY diisi manual di .env
+	if cfg.ETHPrivateKey == "" {
+		log.Printf("warning: ETH_PRIVATE_KEY kosong, isi private key Ethereum di .env")
+	} else if !wallet.ValidatePrivateKey(cfg.ETHPrivateKey, wallet.PrivateKeyTypeEVM) {
+		log.Printf("warning: ETH_PRIVATE_KEY format tidak valid")
+	}
+
+	if cfg.SolanaPrivateKey == "" {
+		log.Printf("warning: SOLANA_PRIVATE_KEY kosong, isi private key Solana di .env")
+	} else if !wallet.ValidatePrivateKey(cfg.SolanaPrivateKey, wallet.PrivateKeyTypeSolana) {
+		log.Printf("warning: SOLANA_PRIVATE_KEY format tidak valid")
 	}
 
 	st, err := store.Open(cfg.DBPath)

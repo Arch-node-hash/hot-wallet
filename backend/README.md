@@ -47,7 +47,8 @@ Semua lewat environment variable (atau file `backend/.env`):
 | `WS_WATCHER_ENABLED` | `true`    | Nyalakan watcher saldo real-time    |
 | `WS_DEBOUNCE` | `4s`             | Jarak minimum refresh per blok (EVM) |
 | `WS_REFRESH` | `30s`             | Refresh periodik cadangan           |
-| `WALLET_MNEMONIC` | *(wajib diisi)* | Seed phrase BIP39 12 kata untuk identitas wallet |
+| `ETH_PRIVATE_KEY` | *(wajib diisi)* | Private key Ethereum (64 hex characters dengan 0x prefix) |
+| `SOLANA_PRIVATE_KEY` | *(wajib diisi)* | Private key Solana (base58 encoded) |
 
 Endpoint WebSocket **tidak di-hardcode** di source. Saat pertama dijalankan,
 nilai dari env di-seed ke tabel `rpc_configs.wss_url`; setelah itu nilainya
@@ -70,41 +71,33 @@ wallet) dan menyimpan setiap hasil pembacaan ke SQLite:
 Hasil ditulis ke `wallet_balances`, `wallets.balance` (native), dan
 `network_summaries`. Metadata token yang dipantau ada di tabel `tokens`.
 
-## Seed phrase & identitas wallet
+## Private Keys untuk Wallet
 
-Identitas wallet memakai **seed phrase BIP39** (12 kata). Isi seed secara
-manual di `backend/.env`:
+Wallet menggunakan **private key langsung** tanpa seed phrase:
 
+1. **Ethereum & EVM chains**: `ETH_PRIVATE_KEY` (64 hex characters, `0x` opsional)
+2. **Solana**: `SOLANA_PRIVATE_KEY` (base58 / hex / JSON array)
+
+Satu `ETH_PRIVATE_KEY` dipakai untuk **semua jaringan EVM** (Ethereum, BNB
+Chain, Arbitrum, Robinhood). Alamatnya sama, tetapi tabel `wallets` tetap
+menyimpan **satu baris per jaringan** (ID `eth-`, `bsc-`, `arb-`, `rob-`).
+Solana memakai kurva ed25519 yang berbeda, jadi wajib punya private key
+sendiri (`sol-`).
+
+Contoh di `.env`:
 ```
-WALLET_MNEMONIC=dua belas kata seed phrase kamu di sini
-```
-
-Server **tidak** membuat atau menulis seed otomatis. Kalau `WALLET_MNEMONIC`
-kosong atau formatnya tidak valid, server hanya menampilkan warning saat
-startup. File `.env` tidak ikut git — **backup file itu**, karena seed yang sama
-diperlukan untuk memulihkan semua alamat.
-
-Dari satu seed, alamat diturunkan secara HD:
-
-| Jaringan | Path derivasi |
-|---|---|
-| EVM (Ethereum, BNB Chain, Arbitrum, Robinhood) | `m/44'/60'/0'/0/{index}` |
-| Solana | `m/44'/501'/{index}'/0'` |
-
-Tabel `wallets` hanya menyimpan `address`, `network`, dan `derivation_path` —
-seed phrase tidak dimasukkan ke database. Helper-nya ada di
-`internal/blockchain/wallet`:
-
-```go
-mnemonic, _ := wallet.NewMnemonic(12)          // buat seed phrase
-ok := wallet.ValidateMnemonic(mnemonic)        // cek checksum BIP39
-
-evm, _ := wallet.DeriveEVM(mnemonic, "", 0)    // alamat EVM + private key
-sol, _ := wallet.DeriveSolana(mnemonic, "", 0) // alamat Solana + ed25519 key
+ETH_PRIVATE_KEY=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+SOLANA_PRIVATE_KEY=<base58 seed 32 byte atau keypair 64 byte>
 ```
 
-Alamat EVM memakai checksum EIP-55; alamat Solana memakai base58 dari public
-key ed25519. Private key hasil derivasi **tidak** ditulis ke database.
+Format `SOLANA_PRIVATE_KEY` yang diterima:
+- base58 32 byte (seed) atau 64 byte (keypair hasil export Phantom/solana-keygen)
+- hex 64 karakter (seed) atau 128 karakter (keypair)
+- JSON array byte, format file `solana-keygen` (`[12,34,...]`)
+
+Private keys **tidak disimpan di database** - hanya di environment variable.
+Saat startup, wallet yang belum ada dibuat otomatis dari key tersebut (satu
+wallet per jaringan). File `.env` tidak ikut git — **backup file itu dengan aman**.
 
 ## Struktur
 
@@ -207,8 +200,6 @@ berjalan di background.
 | GET | `/api/v1/contacts/{contactID}` | Detail kontak |
 | PUT | `/api/v1/contacts/{contactID}` | Edit kontak |
 | DELETE | `/api/v1/contacts/{contactID}` | Hapus kontak |
-| POST | `/api/v1/settings/wallets/create` | Buat wallet baru |
-| POST | `/api/v1/settings/wallets/import` | Impor wallet |
 | GET | `/api/v1/settings/rpc` | Daftar RPC/WSS |
 | PUT | `/api/v1/settings/rpc` | Ubah RPC/WSS |
 | GET | `/api/v1/settings/security` | Baca pengaturan keamanan |
@@ -255,7 +246,6 @@ Panduan lengkap ada di [`CONTRIBUTING.md`](./CONTRIBUTING.md).
    - Edit dan hapus kontak
 
 5. **Setting** (`/api/v1/settings`)
-   - Create & Import Wallet
    - RPC jaringan
    - Keamanan
    - Backup
@@ -344,8 +334,6 @@ backend/
 - `DELETE /contacts/{id}` - Hapus kontak
 
 #### Setting Endpoints:
-- `POST /settings/wallets/create` - Buat wallet baru
-- `POST /settings/wallets/import` - Impor wallet
 - `GET /settings/rpc` - Daftar RPC/WSS
 - `PUT /settings/rpc` - Ubah RPC/WSS
 - `GET /settings/security` - Baca pengaturan keamanan
