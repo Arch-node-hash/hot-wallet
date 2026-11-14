@@ -1,8 +1,9 @@
 # Alur & Panduan Ngoding Backend
 
 Dokumen ini menjelaskan alur request di backend HotWallet dan file mana yang harus
-diubah. Backend memakai **Fiber v3 + SQLite**. Handler/service masih berupa
-placeholder, tinggal diisi logika nyata.
+diubah. Backend memakai **Fiber v3 + SQLite**. Modul Wallet sudah berisi logika
+nyata (endpoint dasar di `service.go`/`handler.go`, logika halaman di `page.go`);
+modul lain sebagian masih placeholder dan tinggal diisi logika nyata.
 
 ---
 
@@ -63,18 +64,18 @@ backend/
 │   │   ├── portfolio/      handler.go, model.go, service.go
 │   │   ├── setting/        handler.go, model.go, service.go
 │   │   ├── transaction/    handler.go, model.go, service.go
-│   │   └── wallet/         handler.go, model.go, service.go
+│   │   └── wallet/         handler.go, model.go, service.go, page.go
 │   ├── blockchain/
-│   │   ├── wallet/         master.go, derivation.go, address.go, keystore.go
-│   │   ├── evm/            client.go, balance.go, ws.go, transfer.go, token.go, gas.go, transaction.go
-│   │   ├── solana/         client.go, rpc.go, ws.go, token.go, transfer.go, transaction.go
-│   │   ├── network/        registry.go, network.go, rpc.go, defaults.go
+│   │   ├── wallet/         master.go, derivation.go, derive_address.go, address.go, keystore.go
+│   │   ├── evm/            client.go, rpc.go, balance.go, ws.go, transfer.go, token.go, gas.go, transaction.go
+│   │   ├── solana/         client.go, rpc.go, ws.go, token.go, transfer.go, balance.go, transaction.go
+│   │   ├── network/        registry.go, network.go, rpc.go, defaults.go, meta.go
 │   │   ├── tokenmeta/      defaults.go
 │   │   ├── watcher/        manager.go
 │   │   └── wsrpc/          wsrpc.go
 │   ├── infrastructure/
 │   │   ├── router/         router.go
-│   │   ├── store/          sqlite.go, backup.go, schema.go, balances.go, rpc.go
+│   │   ├── store/          sqlite.go, backup.go, schema.go, balances.go, rpc.go, wallet.go, token_prices.go, contact.go, security.go
 │   │   ├── security/       encryption.go, keymanager.go
 │   │   └── health/         handler.go
 │   └── shared/
@@ -99,7 +100,7 @@ backend/
 
 | Domain | Model utama | Tabel | Route |
 |---|---|---|---|
-| `wallet` | `Wallet`, `WalletBalance`, `NetworkSummary` | `wallets`, `wallet_balances`, `network_summaries` | `/api/v1/wallets` |
+| `wallet` | `Wallet`, `WalletBalance`, `NetworkSummary`, view halaman di `page.go` | `wallets`, `wallet_balances`, `network_summaries`, `token_prices` | `/api/v1/wallets` |
 | `portfolio` | `PortfolioSummary`, `PortfolioToken`, `NetworkAsset` | `portfolio_summary`, `portfolio_tokens`, `network_assets` | `/api/v1/portfolio` |
 | `transaction` | `Transaction` | `transactions` | `/api/v1/transactions` |
 | `contact` | `Contact` | `contacts` | `/api/v1/contacts` |
@@ -204,6 +205,20 @@ key diganti, alamat wallet tunggal di jaringan itu ikut diperbarui (deteksi
 dari perbandingan alamat hasil derivasi); saldo lama dihapus. Jaringan dengan
 lebih dari satu wallet dilewati dan harus di-update lewat `PUT /address`.
 
+Rotate alamat ("Perbaharui Address") memakai derivasi HD deterministik dari key
+yang sama (`derive_address.go`): index 0 = alamat langsung dari key, index > 0
+diturunkan dari seed `SHA256("HotWallet/address/v1/" || key)` via BIP32 (EVM)
+atau SLIP-0010 (Solana). Index disimpan di `wallets.derivation_index` sehingga
+alamat hasil rotate tetap sama setelah restart. Satu rotate EVM memperbarui
+keempat wallet EVM sekaligus.
+
+### `internal/modules/wallet/page.go`
+
+Berisi seluruh logika halaman Wallet: `Overview` (tab ALL), `Addresses` (modal
+2 kolom), `Networks` (metadata tab), `Rotate`, `RefreshAll`/`RefreshWallet`,
+`SendEstimate`, dan `Send`. Nilai USD dihitung saat baca dari `token_prices`
+(stablecoin fallback $1). Handler tipis di `handler.go` memanggil method ini.
+
 ### `pkg/auth/token.go`
 
 ```go
@@ -300,10 +315,11 @@ walletGroup := apiV1.Group("/wallets")
 walletGroup.Post("/:walletID/send", walletH.Send)
 ```
 
-Saat ini handler modul masih skeleton dan `router.go` memakai placeholder
-inline. Setelah handler diimplementasikan, ganti placeholder tersebut dengan
-method handler aslinya. Helper `registerCRUD` masih tersedia di `router.go`,
-tetapi route 5 fitur didaftarkan eksplisit agar path-nya tetap sesuai.
+Wallet, `GET /contacts`, dan `settings/security` sudah memakai handler asli.
+Modul lain masih skeleton dan `router.go` memakai placeholder inline; setelah
+handler diimplementasikan, ganti placeholder tersebut dengan method handler
+aslinya. Helper `registerCRUD` masih tersedia di `router.go`, tetapi route 5
+fitur didaftarkan eksplisit agar path-nya tetap sesuai.
 
 ### E. Memakai pagination di endpoint list
 
@@ -414,10 +430,18 @@ PORT=5022 /tmp/hotwallet-api
 | GET | `/` |
 | GET | `/api/v1/health` |
 | GET/POST | `/api/v1/wallets` |
+| GET | `/api/v1/wallets/overview` |
+| GET | `/api/v1/wallets/addresses` |
+| GET | `/api/v1/wallets/networks` |
+| POST | `/api/v1/wallets/refresh` |
 | GET/DELETE | `/api/v1/wallets/:walletID` |
 | GET | `/api/v1/wallets/:walletID/balance` |
+| POST | `/api/v1/wallets/:walletID/refresh` |
+| POST | `/api/v1/wallets/:walletID/rotate` |
+| POST | `/api/v1/wallets/:walletID/send/estimate` |
 | POST | `/api/v1/wallets/:walletID/send` |
 | GET | `/api/v1/wallets/:walletID/receive` |
+| PUT | `/api/v1/wallets/:walletID/address` |
 | GET | `/api/v1/portfolio/summary` |
 | GET | `/api/v1/portfolio/tokens` |
 | GET | `/api/v1/portfolio/networks` |
@@ -431,6 +455,7 @@ PORT=5022 /tmp/hotwallet-api
 | GET/POST | `/api/v1/settings/backup` |
 | GET | `/avatars/*` |
 
-Endpoint fitur masih mengembalikan `501 Not Implemented` sampai handler di
-`internal/modules/*` diisi. Path di luar tabel ini (misalnya `/api/dashboard`,
-`/api/tasks`, `/api/auth/*`) mengembalikan `404`.
+Endpoint Wallet, `GET /contacts`, dan `GET/PUT /settings/security` sudah
+berfungsi. Endpoint lain masih mengembalikan `501 Not Implemented` sampai
+handler di `internal/modules/*` diisi. Path di luar tabel ini (misalnya
+`/api/dashboard`, `/api/tasks`, `/api/auth/*`) mengembalikan `404`.

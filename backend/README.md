@@ -4,8 +4,11 @@ Backend API minimal memakai [Fiber v3](https://gofiber.io) dan **SQLite**
 (`github.com/mattn/go-sqlite3`). Tidak ada frontend atau penyajian halaman
 statis — server ini hanya menyediakan endpoint JSON.
 
-Semua handler dan service domain masih berupa **placeholder**. Struktur folder
-tetap dipertahankan supaya mudah diisi logika nyata satu per satu.
+Modul **Wallet** sudah berisi logika nyata (overview, alamat, rotate,
+refresh, estimasi & kirim transaksi), termasuk Contact Book (baca daftar) dan
+pengaturan keamanan (PIN). Modul Portfolio, Transaction, dan sisanya masih
+**placeholder** `501 Not Implemented`; strukturnya dipertahankan supaya mudah
+diisi logika nyata satu per satu.
 
 ## Prasyarat
 
@@ -108,6 +111,19 @@ alamat harus diperbarui manual lewat
 `PUT /api/v1/wallets/{walletID}/address`. ID wallet sengaja tidak berubah
 agar referensi ke wallet tersebut tetap stabil.
 
+### Derivasi alamat untuk "Perbaharui Address"
+
+Rotate alamat memakai derivasi HD deterministik dari private key env, **tanpa
+menyimpan kunci tambahan**:
+
+- **Index 0** selalu alamat langsung dari private key (kompatibel dengan wallet
+  yang sudah ada).
+- **Index > 0** diturunkan dari seed `SHA256("HotWallet/address/v1/" || key)`
+  lewat BIP32 (EVM) atau SLIP-0010 (Solana).
+- Index tersimpan di `wallets.derivation_index`. Saat startup, env-sync
+  menurunkan ulang alamat pada index tersimpan, sehingga hasil rotate tetap
+  sama setelah restart.
+
 ## Struktur
 
 ```
@@ -132,7 +148,7 @@ backend/
 │   │   ├── security/        # Enkripsi/kunci
 │   │   └── health/
 │   ├── modules/             # Satu paket per fitur (handler + service + model)
-│   │   ├── wallet/          # handler.go, service.go, model.go
+│   │   ├── wallet/          # handler.go, service.go, model.go, page.go
 │   │   ├── portfolio/       # handler.go, service.go, model.go
 │   │   ├── transaction/     # handler.go, service.go, model.go
 │   │   ├── contact/         # handler.go, service.go, model.go
@@ -152,9 +168,9 @@ backend/
 └── CONTRIBUTING.md
 ```
 
-Handler fitur di `internal/modules/*` masih skeleton; routing saat ini memakai
-placeholder inline di `router.go`. Watcher saldo dan penyimpanan ke database
-sudah berjalan.
+Handler fitur di `internal/modules/*` selain Wallet/Contact/Setting masih
+skeleton. Watcher saldo, pembacaan saldo via RPC HTTP, dan penyimpanan ke
+database sudah berjalan.
 
 Alur request:
 
@@ -172,6 +188,7 @@ Database dibuat otomatis di `data/hotwallet.db`. Tabel yang dipakai:
 | `wallet_balances` | Saldo native & token per wallet/jaringan (hasil watcher) |
 | `network_summaries` | Ringkasan saldo per wallet/jaringan |
 | `tokens` | Metadata token yang dipantau (ERC-20/SPL) |
+| `token_prices` | Harga token per jaringan (sumber nilai USD; diisi dari luar) |
 | `rpc_configs` | Endpoint RPC + WSS per jaringan |
 | `transactions` | Riwayat transaksi |
 | `contacts` | Kontak alamat wallet |
@@ -183,43 +200,273 @@ Database dibuat otomatis di `data/hotwallet.db`. Tabel yang dipakai:
 
 ## Rute
 
-Semua endpoint fitur ada di bawah `/api/v1`. **Handler-nya masih placeholder
-`501 Not Implemented`**, kecuali `/`, `/api/v1/health`, dan watcher saldo yang
-berjalan di background.
+Semua endpoint fitur ada di bawah `/api/v1`. Endpoint **Wallet** (kecuali
+`POST /wallets` create manual), `GET /contacts`, dan
+`GET/PUT /settings/security` sudah berfungsi; sisanya masih placeholder
+`501 Not Implemented`.
 
-| Method | Path | Fitur |
-|---|---|---|
-| GET | `/` | Info server |
-| GET | `/api/v1/health` | Health check |
-| GET | `/api/v1/wallets` | Daftar wallet |
-| POST | `/api/v1/wallets` | Tambah wallet |
-| GET | `/api/v1/wallets/{walletID}` | Detail wallet (termasuk alamat) |
-| GET | `/api/v1/wallets/{walletID}/balance` | Saldo wallet + ringkasan per jaringan |
-| POST | `/api/v1/wallets/{walletID}/send` | Kirim aset |
-| GET | `/api/v1/wallets/{walletID}/receive` | Alamat/QR receive |
-| DELETE | `/api/v1/wallets/{walletID}` | Hapus wallet |
-| GET | `/api/v1/portfolio/summary` | Total aset |
-| GET | `/api/v1/portfolio/tokens` | Daftar token + saldo |
-| GET | `/api/v1/portfolio/networks` | Rincian aset per jaringan |
-| GET | `/api/v1/transactions` | Riwayat transaksi |
-| GET | `/api/v1/transactions/{txHash}` | Detail transaksi |
-| GET | `/api/v1/transactions/{txHash}/status` | Status transaksi |
-| GET | `/api/v1/contacts` | Daftar kontak |
-| POST | `/api/v1/contacts` | Simpan kontak |
-| GET | `/api/v1/contacts/{contactID}` | Detail kontak |
-| PUT | `/api/v1/contacts/{contactID}` | Edit kontak |
-| DELETE | `/api/v1/contacts/{contactID}` | Hapus kontak |
-| GET | `/api/v1/settings/rpc` | Daftar RPC/WSS |
-| PUT | `/api/v1/settings/rpc` | Ubah RPC/WSS |
-| GET | `/api/v1/settings/security` | Baca pengaturan keamanan |
-| PUT | `/api/v1/settings/security` | Ubah pengaturan keamanan |
-| GET | `/api/v1/settings/backup` | Info backup |
-| POST | `/api/v1/settings/backup` | Buat backup |
-| GET | `/avatars/*` | File avatar dari `data/avatars` |
+| Method | Path | Fitur | Status |
+|---|---|---|---|
+| GET | `/` | Info server | ✅ |
+| GET | `/api/v1/health` | Health check | ✅ |
+| GET | `/api/v1/wallets` | Daftar wallet (diperkaya harga + nilai USD) | ✅ |
+| POST | `/api/v1/wallets` | Tambah wallet manual (import private key) | ✅ |
+| GET | `/api/v1/wallets/overview` | Tab ALL: total USD, perubahan 24 jam, kartu jaringan | ✅ |
+| GET | `/api/v1/wallets/addresses` | Modal alamat 2 kolom (EVM + Solana) | ✅ |
+| GET | `/api/v1/wallets/networks` | Metadata tab jaringan | ✅ |
+| POST | `/api/v1/wallets/refresh` | Baca ulang saldo semua wallet, kembalikan overview | ✅ |
+| GET | `/api/v1/wallets/{walletID}` | Detail wallet + saldo per token | ✅ |
+| GET | `/api/v1/wallets/{walletID}/balance` | Saldo wallet + ringkasan per jaringan | ✅ |
+| POST | `/api/v1/wallets/{walletID}/refresh` | Baca ulang saldo satu wallet | ✅ |
+| POST | `/api/v1/wallets/{walletID}/rotate` | Perbaharui Address (alamat baru) | ✅ |
+| POST | `/api/v1/wallets/{walletID}/send/estimate` | Estimasi biaya kirim | ✅ |
+| POST | `/api/v1/wallets/{walletID}/send` | Kirim aset (native/ERC-20/SPL) | ✅ |
+| GET | `/api/v1/wallets/{walletID}/receive` | Alamat/QR receive | ✅ |
+| PUT | `/api/v1/wallets/{walletID}/address` | Ganti alamat dari private key kiriman | ✅ |
+| DELETE | `/api/v1/wallets/{walletID}` | Hapus wallet | ✅ |
+| GET | `/api/v1/portfolio/summary` | Total aset | 501 |
+| GET | `/api/v1/portfolio/tokens` | Daftar token + saldo | 501 |
+| GET | `/api/v1/portfolio/networks` | Rincian aset per jaringan | 501 |
+| GET | `/api/v1/transactions` | Riwayat transaksi | 501 |
+| GET | `/api/v1/transactions/{txHash}` | Detail transaksi | 501 |
+| GET | `/api/v1/transactions/{txHash}/status` | Status transaksi | 501 |
+| GET | `/api/v1/contacts` | Daftar kontak | ✅ |
+| POST | `/api/v1/contacts` | Simpan kontak | 501 |
+| GET | `/api/v1/contacts/{contactID}` | Detail kontak | 501 |
+| PUT | `/api/v1/contacts/{contactID}` | Edit kontak | 501 |
+| DELETE | `/api/v1/contacts/{contactID}` | Hapus kontak | 501 |
+| GET | `/api/v1/settings/rpc` | Daftar RPC/WSS | 501 |
+| PUT | `/api/v1/settings/rpc` | Ubah RPC/WSS | 501 |
+| GET | `/api/v1/settings/security` | Baca pengaturan keamanan | ✅ |
+| PUT | `/api/v1/settings/security` | Ubah pengaturan keamanan | ✅ |
+| GET | `/api/v1/settings/backup` | Info backup | 501 |
+| POST | `/api/v1/settings/backup` | Buat backup | 501 |
+| GET | `/avatars/*` | File avatar dari `data/avatars` | ✅ |
 
 Tidak ada endpoint dashboard, analytics, tasks, projects, team, reminders,
 calendar, time-entries, atau auth. Path yang tidak terdaftar akan mendapat
 `404 {"error":"not found"}`.
+
+### Envelope respons
+
+Semua endpoint JSON memakai bentuk yang sama (`internal/shared/models/api.go`):
+
+```json
+{ "success": true, "message": "opsional", "data": { } }
+{ "success": false, "error": "pesan kesalahan" }
+```
+
+## Kontrak API halaman Wallet
+
+Halaman Wallet memakai metadata jaringan statis dari
+`internal/blockchain/network/meta.go`. Urutan tab:
+`ALL, ETH, BNB, ARB, ROBINHOOD, SOL`.
+
+| network_key | network | short | token_standard | address_type |
+|---|---|---|---|---|
+| `ethereum` | Ethereum Mainnet | ETH | ERC-20 | EVM Universal Address |
+| `bsc` | BNB Chain | BNB | BEP-20 | EVM Universal Address |
+| `arbitrum` | Arbitrum One | ARB | Arbitrum | EVM Universal Address |
+| `robinhood` | Robinhood Chain | ROBINHOOD | RH-20 | EVM Universal Address |
+| `solana` | Solana Mainnet | SOL | SPL | Solana Mainnet Base58 Address |
+
+Nilai USD dihitung saat baca dari tabel `token_prices`. Stablecoin
+(USDT/USDC/DAI/BUSD/TUSD/FDUSD/USDe/USDD) selalu dihargai $1 bila belum ada
+baris harga. Native token bernilai 0 sampai `token_prices` diisi.
+
+### `GET /api/v1/wallets/overview` — tab ALL
+
+```bash
+curl http://localhost:5009/api/v1/wallets/overview
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "total_value_usd": "9000.00",
+    "change_24h_usd": "100.00",
+    "change_24h_percent": 1.11,
+    "refreshed_at": "2026-01-01T00:00:00Z",
+    "networks": [
+      {
+        "network_key": "ethereum",
+        "network": "Ethereum Mainnet",
+        "display_name": "Ethereum",
+        "short": "ETH",
+        "token_standard": "ERC-20",
+        "address_type": "EVM Universal Address",
+        "explorer_url": "https://etherscan.io",
+        "wallet_id": "eth-1Be31A94",
+        "address": "0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb",
+        "address_short": "0x1Be3...d4bb",
+        "native_symbol": "ETH",
+        "native_balance": "2",
+        "usdt_balance": "1000",
+        "total_value_usd": "7000.00",
+        "change_24h_percent": 1.71,
+        "has_wallet": true,
+        "tokens": [
+          { "token_address": "", "symbol": "ETH", "decimals": 18, "balance": "2",
+            "price_usd": "3000", "value_usd": "6000.00", "change_24h": 2, "is_native": true },
+          { "token_address": "0xdAC1...ec7", "symbol": "USDT", "decimals": 6, "balance": "1000",
+            "price_usd": "1", "value_usd": "1000.00", "change_24h": 0, "is_native": false }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Kartu `networks` selalu berisi 5 jaringan (wallet yang belum ada tetap muncul
+dengan `has_wallet: false`), diurutkan dari `total_value_usd` terbesar.
+`POST /api/v1/wallets/refresh` mengembalikan bentuk yang sama setelah membaca
+ulang saldo via RPC HTTP.
+
+### `GET /api/v1/wallets/addresses` — modal alamat 2 kolom
+
+```bash
+curl http://localhost:5009/api/v1/wallets/addresses
+```
+
+```json
+{
+  "success": true,
+  "data": {
+    "evm": {
+      "address_type": "EVM Universal Address",
+      "address": "0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb",
+      "address_short": "0x1Be3...d4bb",
+      "networks": ["Ethereum Mainnet", "BNB Chain", "Arbitrum One", "Robinhood Chain"],
+      "shorts": ["ETH", "BNB", "ARB", "ROBINHOOD"],
+      "qr_data": "0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb"
+    },
+    "solana": null
+  }
+}
+```
+
+`solana` bernilai `null` bila `SOLANA_PRIVATE_KEY` belum diisi. Data QR cukup
+memakai `qr_data` (alamat mentah); render QR dilakukan di frontend.
+
+### `GET /api/v1/wallets/networks` — metadata tab
+
+Mengembalikan array 5 tab (urutan UI) dengan `network_key`, `network`,
+`display_name`, `short`, `token_standard`, `address_type`, dan `wallet_id`/
+`address`/`address_short` bila wallet-nya ada.
+
+### `POST /api/v1/wallets/{walletID}/rotate` — Perbaharui Address
+
+```bash
+curl -X POST http://localhost:5009/api/v1/wallets/eth-1Be31A94/rotate
+```
+
+```json
+{
+  "success": true,
+  "message": "alamat baru dibuat",
+  "data": {
+    "chain": "evm",
+    "network_key": "ethereum",
+    "address_type": "EVM Universal Address",
+    "old_address": "0x1Be31A94361a391bBaFB2a4CCd704F57dc04d4bb",
+    "new_address": "0x9A7c...1122",
+    "derivation_index": 1,
+    "note": "Alamat lama tetap valid untuk menerima dana.",
+    "wallets": [
+      { "wallet_id": "eth-1Be31A94", "network": "Ethereum Mainnet",
+        "old_address": "0x1Be3...d4bb", "new_address": "0x9A7c...1122", "derivation_index": 1 }
+    ]
+  }
+}
+```
+
+Alamat baru diturunkan deterministik dari private key env pada index HD
+berikutnya (lihat bagian *Private Keys*). Satu kali rotate pada jaringan EVM
+memperbarui **keempat** wallet EVM sekaligus karena alamatnya universal.
+Alamat lama tetap valid untuk menerima dana; `wallets` berisi semua wallet yang
+ikut diperbarui.
+
+### `POST /api/v1/wallets/{walletID}/send/estimate`
+
+```bash
+curl -X POST http://localhost:5009/api/v1/wallets/eth-1Be31A94/send/estimate \
+  -H 'Content-Type: application/json' \
+  -d '{"to":"0x000000000000000000000000000000000000dEaD","token_address":"","amount":"0.1"}'
+```
+
+`token_address` kosong = native; isi alamat kontrak untuk ERC-20/SPL.
+
+```json
+{
+  "success": true,
+  "data": {
+    "network": "Ethereum Mainnet",
+    "network_key": "ethereum",
+    "token_symbol": "ETH",
+    "token_address": "",
+    "amount": "0.1",
+    "native_symbol": "ETH",
+    "fee_native": "0.000021",
+    "fee_usd": "0.06",
+    "gas_limit": 21000,
+    "gas_price": "1000000000",
+    "total_usd": "300.00"
+  }
+}
+```
+
+### `POST /api/v1/wallets/{walletID}/send`
+
+Langkah konfirmasi. Bila PIN aktif, sertakan `pin`.
+
+```bash
+curl -X POST http://localhost:5009/api/v1/wallets/eth-1Be31A94/send \
+  -H 'Content-Type: application/json' \
+  -d '{"to":"0x000000000000000000000000000000000000dEaD","token_address":"","amount":"0.1","pin":"123456"}'
+```
+
+```json
+{
+  "success": true,
+  "message": "transaksi dikirim",
+  "data": {
+    "tx_hash": "0xabc...",
+    "network": "Ethereum Mainnet",
+    "network_key": "ethereum",
+    "token_symbol": "ETH",
+    "amount": "0.1",
+    "to": "0x000000000000000000000000000000000000dEaD",
+    "explorer_url": "https://etherscan.io/tx/0xabc...",
+    "status": "pending"
+  }
+}
+```
+
+Auto-lock jaringan mengikuti format `to`: alamat EVM (0x…) hanya untuk jaringan
+EVM, alamat Solana base58 hanya untuk Solana.
+
+### `GET /api/v1/contacts` — Contact Book
+
+```json
+{ "success": true, "data": [ { "id": "c1", "name": "Alice",
+  "address": "0x…", "network": "Ethereum Mainnet", "notes": "" } ] }
+```
+
+### `GET/PUT /api/v1/settings/security` — PIN
+
+```bash
+curl http://localhost:5009/api/v1/settings/security
+curl -X PUT http://localhost:5009/api/v1/settings/security \
+  -H 'Content-Type: application/json' -d '{"pin":"123456"}'
+```
+
+```json
+{ "success": true, "data": { "pin_enabled": true, "biometric_enabled": false, "auto_lock_minutes": 5 } }
+```
+
+PIN disimpan sebagai hash SHA-256 (pengaman dasar, bukan enkripsi private key)
+dan diverifikasi pada langkah konfirmasi `send`.
 
 ## Mengisi logika
 
@@ -227,6 +474,10 @@ calendar, time-entries, atau auth. Path yang tidak terdaftar akan mendapat
 2. Tambahkan dependency/implementasi di `internal/modules/<domain>/service.go`.
 3. Sesuaikan model di `internal/modules/<domain>/model.go` bila perlu.
 4. Daftarkan dependency baru di `internal/infrastructure/router/router.go`.
+
+Contoh yang sudah jadi: `internal/modules/wallet/` (endpoint dasar di
+`service.go`/`handler.go`, logika halaman Wallet di `page.go`), serta
+`internal/modules/contact/` dan `internal/modules/setting/`.
 
 Panduan lengkap ada di [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
@@ -280,7 +531,7 @@ backend/
 │   │   ├── store/         # Database layer
 │   │   └── security/      # Key management
 │   ├── modules/           # Business logic per halaman
-│   │   ├── wallet/        # handler.go, service.go, model.go
+│   │   ├── wallet/        # handler.go, service.go, model.go, page.go
 │   │   ├── portfolio/     # handler.go, service.go, model.go
 │   │   ├── transaction/   # handler.go, service.go, model.go
 │   │   ├── contact/       # handler.go, service.go, model.go
@@ -317,13 +568,23 @@ backend/
 ### Base URL: `http://localhost:5009/api/v1`
 
 #### Wallet Endpoints:
-- `GET /wallets` - List all wallets
-- `POST /wallets` - Tambah wallet
-- `GET /wallets/{id}` - Detail wallet (termasuk alamat)
+- `GET /wallets` - List all wallets (diperkaya harga + nilai USD)
+- `POST /wallets` - Tambah wallet (import private key)
+- `GET /wallets/overview` - Tab ALL: total USD + perubahan 24 jam + kartu jaringan
+- `GET /wallets/addresses` - Modal alamat 2 kolom (EVM + Solana)
+- `GET /wallets/networks` - Metadata tab jaringan
+- `POST /wallets/refresh` - Baca ulang saldo semua wallet
+- `GET /wallets/{id}` - Detail wallet (termasuk alamat + saldo token)
 - `GET /wallets/{id}/balance` - Saldo wallet + ringkasan per jaringan
-- `POST /wallets/{id}/send` - Send transaction
+- `POST /wallets/{id}/refresh` - Baca ulang saldo satu wallet
+- `POST /wallets/{id}/rotate` - Perbaharui Address (alamat baru)
+- `POST /wallets/{id}/send/estimate` - Estimasi biaya kirim
+- `POST /wallets/{id}/send` - Kirim transaksi (native/ERC-20/SPL)
 - `GET /wallets/{id}/receive` - Alamat/QR receive
+- `PUT /wallets/{id}/address` - Ganti alamat dari private key kiriman
 - `DELETE /wallets/{id}` - Hapus wallet
+
+Kontrak request/response lengkap ada di bagian **Kontrak API halaman Wallet**.
 
 #### Portfolio Endpoints:
 - `GET /portfolio/summary` - Total aset
@@ -360,19 +621,17 @@ backend/
 
 ## 🔧 Development
 
-Struktur sudah di-setup dengan:
+Sudah tersedia:
 - Database schema untuk semua 5 halaman
-- API routes dengan placeholder handlers
-- Service layer interfaces
-- Response models
-- Network registry dengan default networks
+- Wallet module berfungsi penuh (overview, alamat, rotate, refresh, send)
+- Contact Book (baca daftar) dan pengaturan keamanan (PIN)
+- Response models + network registry dengan default networks
 
 **Selanjutnya:**
-Implementasikan logic business di masing-masing modul:
-1. `internal/modules/wallet/`
-2. `internal/modules/portfolio/`
-3. `internal/modules/transaction/`
-4. `internal/modules/contact/`
-5. `internal/modules/setting/`
+Implementasikan modul yang masih placeholder:
+1. `internal/modules/portfolio/`
+2. `internal/modules/transaction/`
+3. `internal/modules/contact/` (create/update/delete)
+4. `internal/modules/setting/` (RPC, backup)
 
 Database sudah siap dengan semua tabel yang diperlukan.

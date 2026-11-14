@@ -14,6 +14,8 @@ import (
 
 	"hotwallet/backend/config"
 	"hotwallet/backend/internal/infrastructure/store"
+	"hotwallet/backend/internal/modules/contact"
+	"hotwallet/backend/internal/modules/setting"
 	"hotwallet/backend/internal/modules/wallet"
 )
 
@@ -42,6 +44,10 @@ func New(cfg config.Config, st *store.Store) *fiber.App {
 	// Services
 	walletSvc := wallet.NewService(st, cfg)
 	walletHandler := wallet.NewHandler(walletSvc)
+	contactSvc := contact.NewService(st)
+	contactHandler := contact.NewHandler(contactSvc)
+	settingSvc := setting.NewService(st)
+	settingHandler := setting.NewHandler(settingSvc)
 
 	// Auto-create wallet dari private key di env (lokal dan cepat, dijalankan
 	// sebelum server menerima request). Satu ETH_PRIVATE_KEY menghasilkan
@@ -51,7 +57,7 @@ func New(cfg config.Config, st *store.Store) *fiber.App {
 	}
 
 	// API v1 Routes (menggunakan struktur 5 halaman)
-	setupAPIV1Routes(app, walletHandler)
+	setupAPIV1Routes(app, walletHandler, contactHandler, settingHandler)
 
 	// Avatar disimpan di data/avatars.
 	app.Get("/avatars/*", static.New(filepath.Join(cfg.DataDir, "avatars")))
@@ -84,7 +90,7 @@ func New(cfg config.Config, st *store.Store) *fiber.App {
 }
 
 // setupAPIV1Routes mengatur semua route untuk API v1
-func setupAPIV1Routes(app *fiber.App, walletHandler *wallet.Handler) {
+func setupAPIV1Routes(app *fiber.App, walletHandler *wallet.Handler, contactHandler *contact.Handler, settingHandler *setting.Handler) {
 	// API v1 routes
 	apiV1 := app.Group("/api/v1")
 
@@ -95,15 +101,23 @@ func setupAPIV1Routes(app *fiber.App, walletHandler *wallet.Handler) {
 
 	// Wallet endpoints
 	walletGroup := apiV1.Group("/wallets")
+
+	// Route statis harus didaftarkan sebelum /:walletID.
+	walletGroup.Get("/overview", walletHandler.Overview)
+	walletGroup.Get("/addresses", walletHandler.Addresses)
+	walletGroup.Get("/networks", walletHandler.Networks)
+	walletGroup.Post("/refresh", walletHandler.RefreshAll)
+
 	walletGroup.Get("/", walletHandler.ListWallets)
 	walletGroup.Post("/", walletHandler.CreateWallet)
 
 	walletIDGroup := walletGroup.Group("/:walletID")
 	walletIDGroup.Get("/", walletHandler.GetWallet)
 	walletIDGroup.Get("/balance", walletHandler.GetWalletBalance)
-	walletIDGroup.Post("/send", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"message": "Wallet send - not implemented"})
-	})
+	walletIDGroup.Post("/send", walletHandler.Send)
+	walletIDGroup.Post("/send/estimate", walletHandler.SendEstimate)
+	walletIDGroup.Post("/refresh", walletHandler.RefreshWallet)
+	walletIDGroup.Post("/rotate", walletHandler.Rotate)
 	walletIDGroup.Get("/receive", walletHandler.GetWalletReceive)
 	walletIDGroup.Put("/address", walletHandler.UpdateWalletAddress)
 	walletIDGroup.Delete("/", walletHandler.DeleteWallet)
@@ -134,9 +148,7 @@ func setupAPIV1Routes(app *fiber.App, walletHandler *wallet.Handler) {
 
 	// Contact endpoints
 	contactGroup := apiV1.Group("/contacts")
-	contactGroup.Get("/", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"message": "Contact list - not implemented"})
-	})
+	contactGroup.Get("/", contactHandler.List)
 	contactGroup.Post("/", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"message": "Contact create - not implemented"})
 	})
@@ -161,12 +173,8 @@ func setupAPIV1Routes(app *fiber.App, walletHandler *wallet.Handler) {
 	settingGroup.Put("/rpc", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"message": "Setting RPC update - not implemented"})
 	})
-	settingGroup.Get("/security", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"message": "Setting security get - not implemented"})
-	})
-	settingGroup.Put("/security", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"message": "Setting security update - not implemented"})
-	})
+	settingGroup.Get("/security", settingHandler.GetSecurity)
+	settingGroup.Put("/security", settingHandler.UpdateSecurity)
 	settingGroup.Get("/backup", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"message": "Setting backup get - not implemented"})
 	})

@@ -49,6 +49,7 @@ func createWalletTables(db *sql.DB) error {
 			address TEXT NOT NULL,
 			network TEXT NOT NULL,
 			derivation_path TEXT NOT NULL,
+			derivation_index INTEGER DEFAULT 0,
 			balance TEXT DEFAULT '0',
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -223,14 +224,31 @@ func createTokenTables(db *sql.DB) error {
 			decimals INTEGER NOT NULL,
 			PRIMARY KEY (network, address)
 		)`,
+
+		// Harga token per jaringan. Diisi dari luar (mis. watcher harga) dan
+		// dibaca saat menghitung nilai USD portfolio. Stablecoin tetap punya
+		// fallback $1 walau tabel ini kosong.
+		`CREATE TABLE IF NOT EXISTS token_prices (
+			network TEXT NOT NULL,
+			token_address TEXT NOT NULL DEFAULT '',
+			symbol TEXT NOT NULL,
+			price_usd TEXT NOT NULL DEFAULT '0',
+			change_24h REAL NOT NULL DEFAULT 0,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (network, token_address)
+		)`,
 	}
 
 	if err := executeStatements(db, statements); err != nil {
 		return err
 	}
 
-	// Migrasi untuk database lama: kolom wss_url belum ada di rpc_configs.
+	// Migrasi untuk database lama: kolom wss_url belum ada di rpc_configs,
+	// kolom derivation_index belum ada di wallets.
 	if err := ensureColumn(db, "rpc_configs", "wss_url", "TEXT"); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "wallets", "derivation_index", "INTEGER DEFAULT 0"); err != nil {
 		return err
 	}
 	return nil

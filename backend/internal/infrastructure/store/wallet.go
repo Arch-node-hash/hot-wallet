@@ -15,20 +15,21 @@ import (
 
 // WalletRow mewakili satu baris wallet dari database
 type WalletRow struct {
-	ID             string
-	Name           string
-	Address        string
-	Network        string
-	DerivationPath string
-	Balance        string
-	CreatedAt      string
-	UpdatedAt      string
+	ID              string
+	Name            string
+	Address         string
+	Network         string
+	DerivationPath  string
+	DerivationIndex int
+	Balance         string
+	CreatedAt       string
+	UpdatedAt       string
 }
 
 // ListWallets mengambil semua wallet
 func (s *Store) ListWallets(ctx context.Context) ([]WalletRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, address, network, derivation_path, balance, created_at, updated_at
+		SELECT id, name, address, network, derivation_path, COALESCE(derivation_index, 0), balance, created_at, updated_at
 		FROM wallets
 		ORDER BY created_at DESC
 	`)
@@ -40,7 +41,7 @@ func (s *Store) ListWallets(ctx context.Context) ([]WalletRow, error) {
 	var wallets []WalletRow
 	for rows.Next() {
 		var w WalletRow
-		if err := rows.Scan(&w.ID, &w.Name, &w.Address, &w.Network, &w.DerivationPath, &w.Balance, &w.CreatedAt, &w.UpdatedAt); err != nil {
+		if err := rows.Scan(&w.ID, &w.Name, &w.Address, &w.Network, &w.DerivationPath, &w.DerivationIndex, &w.Balance, &w.CreatedAt, &w.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("store: scan wallet: %w", err)
 		}
 		wallets = append(wallets, w)
@@ -55,10 +56,10 @@ func (s *Store) ListWallets(ctx context.Context) ([]WalletRow, error) {
 func (s *Store) GetWallet(ctx context.Context, id string) (*WalletRow, error) {
 	var w WalletRow
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, address, network, derivation_path, balance, created_at, updated_at
+		SELECT id, name, address, network, derivation_path, COALESCE(derivation_index, 0), balance, created_at, updated_at
 		FROM wallets
 		WHERE id = ?
-	`, id).Scan(&w.ID, &w.Name, &w.Address, &w.Network, &w.DerivationPath, &w.Balance, &w.CreatedAt, &w.UpdatedAt)
+	`, id).Scan(&w.ID, &w.Name, &w.Address, &w.Network, &w.DerivationPath, &w.DerivationIndex, &w.Balance, &w.CreatedAt, &w.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -72,10 +73,10 @@ func (s *Store) GetWallet(ctx context.Context, id string) (*WalletRow, error) {
 func (s *Store) GetWalletByAddressAndNetwork(ctx context.Context, address, network string) (*WalletRow, error) {
 	var w WalletRow
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, address, network, derivation_path, balance, created_at, updated_at
+		SELECT id, name, address, network, derivation_path, COALESCE(derivation_index, 0), balance, created_at, updated_at
 		FROM wallets
 		WHERE address = ? AND network = ?
-	`, address, network).Scan(&w.ID, &w.Name, &w.Address, &w.Network, &w.DerivationPath, &w.Balance, &w.CreatedAt, &w.UpdatedAt)
+	`, address, network).Scan(&w.ID, &w.Name, &w.Address, &w.Network, &w.DerivationPath, &w.DerivationIndex, &w.Balance, &w.CreatedAt, &w.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -89,11 +90,11 @@ func (s *Store) GetWalletByAddressAndNetwork(ctx context.Context, address, netwo
 func (s *Store) GetWalletByAddress(ctx context.Context, address string) (*WalletRow, error) {
 	var w WalletRow
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, name, address, network, derivation_path, balance, created_at, updated_at
+		SELECT id, name, address, network, derivation_path, COALESCE(derivation_index, 0), balance, created_at, updated_at
 		FROM wallets
 		WHERE address = ?
 		LIMIT 1
-	`, address).Scan(&w.ID, &w.Name, &w.Address, &w.Network, &w.DerivationPath, &w.Balance, &w.CreatedAt, &w.UpdatedAt)
+	`, address).Scan(&w.ID, &w.Name, &w.Address, &w.Network, &w.DerivationPath, &w.DerivationIndex, &w.Balance, &w.CreatedAt, &w.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -113,9 +114,9 @@ func (s *Store) CreateWallet(ctx context.Context, w *WalletRow) error {
 	w.UpdatedAt = now
 
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO wallets (id, name, address, network, derivation_path, balance, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, w.ID, w.Name, w.Address, w.Network, w.DerivationPath, w.Balance, w.CreatedAt, w.UpdatedAt)
+		INSERT INTO wallets (id, name, address, network, derivation_path, derivation_index, balance, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, w.ID, w.Name, w.Address, w.Network, w.DerivationPath, w.DerivationIndex, w.Balance, w.CreatedAt, w.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("store: create wallet: %w", err)
 	}
@@ -133,10 +134,11 @@ func (s *Store) UpdateWallet(ctx context.Context, w *WalletRow) error {
 			address = ?,
 			network = ?,
 			derivation_path = ?,
+			derivation_index = ?,
 			balance = ?,
 			updated_at = ?
 		WHERE id = ?
-	`, w.Name, w.Address, w.Network, w.DerivationPath, w.Balance, w.UpdatedAt, w.ID)
+	`, w.Name, w.Address, w.Network, w.DerivationPath, w.DerivationIndex, w.Balance, w.UpdatedAt, w.ID)
 	if err != nil {
 		return fmt.Errorf("store: update wallet %s: %w", w.ID, err)
 	}
@@ -186,7 +188,7 @@ func (s *Store) AutoCreateWalletFromEnv(ctx context.Context, cfg config.Config) 
 			errs = append(errs, fmt.Errorf("ETH_PRIVATE_KEY tidak valid: %w", err))
 		} else {
 			for _, spec := range evmEnvWallets() {
-				if err := s.syncEnvWallet(ctx, info.Address, spec); err != nil {
+				if err := s.syncEnvWallet(ctx, info, spec); err != nil {
 					errs = append(errs, err)
 				}
 			}
@@ -198,7 +200,7 @@ func (s *Store) AutoCreateWalletFromEnv(ctx context.Context, cfg config.Config) 
 		info, err := wallet.ParseSolanaPrivateKey(cfg.SolanaPrivateKey)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("SOLANA_PRIVATE_KEY tidak valid: %w", err))
-		} else if err := s.syncEnvWallet(ctx, info.Address, solanaEnvWallet()); err != nil {
+		} else if err := s.syncEnvWallet(ctx, info, solanaEnvWallet()); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -209,15 +211,16 @@ func (s *Store) AutoCreateWalletFromEnv(ctx context.Context, cfg config.Config) 
 // syncEnvWallet memastikan wallet satu jaringan memakai alamat dari env.
 //
 // Deteksi perubahan key tidak perlu menyimpan key-nya: alamat adalah sidik
-// jari deterministik dari private key. Alamat hasil derivasi dibandingkan
-// dengan alamat yang tersimpan; kalau berbeda berarti key berubah.
+// jari deterministik dari private key. Alamat hasil derivasi (pada index yang
+// tersimpan) dibandingkan dengan alamat yang tersimpan; kalau berbeda berarti
+// key berubah.
 //
 // Aturan update:
-//   - belum ada wallet di jaringan itu  -> buat baru
-//   - ada tepat satu wallet             -> perbarui alamatnya
+//   - belum ada wallet di jaringan itu  -> buat baru (index 0)
+//   - ada tepat satu wallet             -> perbarui alamat pada index tersimpan
 //   - ada lebih dari satu wallet        -> jangan sentuh, kembalikan error
 //     supaya user memilih sendiri lewat PUT /address
-func (s *Store) syncEnvWallet(ctx context.Context, address string, spec envWalletSpec) error {
+func (s *Store) syncEnvWallet(ctx context.Context, info *wallet.PrivateKeyInfo, spec envWalletSpec) error {
 	wallets, err := s.ListWallets(ctx)
 	if err != nil {
 		return err
@@ -228,20 +231,28 @@ func (s *Store) syncEnvWallet(ctx context.Context, address string, spec envWalle
 		if w.Network != spec.Network {
 			continue
 		}
-		if strings.EqualFold(w.Address, address) {
-			return nil // private key sama, tidak ada yang berubah
+		expected, _, err := wallet.DeriveAddressFromPrivateKey(info, uint32(w.DerivationIndex))
+		if err != nil {
+			return fmt.Errorf("sync %s wallet: %w", spec.Network, err)
+		}
+		if strings.EqualFold(w.Address, expected) {
+			return nil // private key & index sama, tidak ada yang berubah
 		}
 		others = append(others, w)
 	}
 
 	switch len(others) {
 	case 0:
+		address, path, err := wallet.DeriveAddressFromPrivateKey(info, 0)
+		if err != nil {
+			return fmt.Errorf("sync %s wallet: %w", spec.Network, err)
+		}
 		row := &WalletRow{
 			ID:             spec.IDPrefix + "-" + walletIDSuffix(address),
 			Name:           spec.DisplayName,
 			Address:        address,
 			Network:        spec.Network,
-			DerivationPath: spec.DerivationPath,
+			DerivationPath: path,
 			Balance:        "0",
 		}
 		if err := s.CreateWallet(ctx, row); err != nil {
@@ -251,7 +262,11 @@ func (s *Store) syncEnvWallet(ctx context.Context, address string, spec envWalle
 
 	case 1:
 		row := others[0]
-		if err := s.UpdateWalletAddress(ctx, row.ID, address, spec.Network, spec.DerivationPath); err != nil {
+		address, path, err := wallet.DeriveAddressFromPrivateKey(info, uint32(row.DerivationIndex))
+		if err != nil {
+			return fmt.Errorf("sync %s wallet: %w", spec.Network, err)
+		}
+		if err := s.UpdateWalletAddress(ctx, row.ID, address, spec.Network, path, row.DerivationIndex); err != nil {
 			return fmt.Errorf("sync %s wallet: %w", spec.Network, err)
 		}
 		log.Printf("wallet: %s (%s) alamat diperbarui ke %s", row.ID, spec.Network, address)
@@ -276,9 +291,10 @@ func walletIDSuffix(address string) string {
 	return address
 }
 
-// UpdateWalletAddress memperbarui alamat wallet (saat user ganti private key).
-// Saldo lama dihapus karena milik alamat lama; watcher akan mengisi ulang.
-func (s *Store) UpdateWalletAddress(ctx context.Context, id, newAddress, newNetwork, newDerivationPath string) error {
+// UpdateWalletAddress memperbarui alamat wallet (ganti private key / rotate).
+// derivationIndex adalah index HD yang dipakai agar alamat bisa diturunkan
+// ulang saat startup. Saldo lama dihapus karena milik alamat lama.
+func (s *Store) UpdateWalletAddress(ctx context.Context, id, newAddress, newNetwork, newDerivationPath string, derivationIndex int) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -292,10 +308,11 @@ func (s *Store) UpdateWalletAddress(ctx context.Context, id, newAddress, newNetw
 			address = ?,
 			network = ?,
 			derivation_path = ?,
+			derivation_index = ?,
 			balance = '0',
 			updated_at = ?
 		WHERE id = ?
-	`, newAddress, newNetwork, newDerivationPath, now, id); err != nil {
+	`, newAddress, newNetwork, newDerivationPath, derivationIndex, now, id); err != nil {
 		return fmt.Errorf("store: update wallet address %s: %w", id, err)
 	}
 

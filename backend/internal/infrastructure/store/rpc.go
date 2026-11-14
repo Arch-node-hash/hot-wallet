@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"hotwallet/backend/internal/blockchain/network"
 )
 
 // RPCSeed adalah nilai awal untuk tabel rpc_configs (biasanya dari env).
@@ -96,6 +98,27 @@ func (s *Store) ListRPCConfigs() ([]RPCConfig, error) {
 		return nil, fmt.Errorf("store: rows rpc: %w", err)
 	}
 	return configs, nil
+}
+
+// GetRPCConfig mengambil konfigurasi satu jaringan berdasarkan nama apa pun.
+func (s *Store) GetRPCConfig(network string) (*RPCConfig, error) {
+	configs, err := s.ListRPCConfigs()
+	if err != nil {
+		return nil, err
+	}
+	key := canonicalNetwork(network)
+	for i := range configs {
+		if canonicalNetwork(configs[i].Network) == key {
+			return &configs[i], nil
+		}
+	}
+	return nil, nil
+}
+
+// canonicalNetwork adalah pembungkus network.Canonical agar file store lain
+// bisa memakai normalisasi nama jaringan yang sama.
+func canonicalNetwork(name string) string {
+	return network.Canonical(name)
 }
 
 // UpdateRPCConfig menyimpan perubahan konfigurasi dari halaman Setting.

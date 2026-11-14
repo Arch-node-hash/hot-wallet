@@ -60,6 +60,30 @@ func TokenAccountRefs(owner string, tokens []Token) []TokenAccountRef {
 	return out
 }
 
+// TokenAccountAddress menurunkan Associated Token Account (ATA) standar
+// (Token Program) untuk satu mint. Dipakai saat mengirim SPL token.
+func TokenAccountAddress(owner, mint string) (string, error) {
+	ownerBytes, err := base58Decode(owner)
+	if err != nil || len(ownerBytes) != 32 {
+		return "", fmt.Errorf("solana: alamat owner tidak valid")
+	}
+	mintBytes, err := base58Decode(mint)
+	if err != nil || len(mintBytes) != 32 {
+		return "", fmt.Errorf("solana: mint tidak valid")
+	}
+	programBytes, err := base58Decode(tokenProgram)
+	if err != nil {
+		return "", err
+	}
+	return findProgramAddress([][]byte{ownerBytes, programBytes, mintBytes}, ataProgram)
+}
+
+// ValidAddress melaporkan apakah string adalah alamat Solana base58 32 byte.
+func ValidAddress(address string) bool {
+	decoded, err := base58Decode(address)
+	return err == nil && len(decoded) == 32
+}
+
 // findProgramAddress menurunkan Program Derived Address (PDA): hash dari
 // seeds + program id + "ProgramDerivedAddress", dengan bump yang menghasilkan
 // titik di luar kurva ed25519.

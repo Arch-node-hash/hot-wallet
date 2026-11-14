@@ -220,11 +220,130 @@ func (h *Handler) GetWalletReceive(c fiber.Ctx) error {
 
 	// Return info receive (address, network, QR code data)
 	receiveInfo := map[string]interface{}{
-		"address":        wallet.Address,
-		"network":        wallet.Network,
+		"address":         wallet.Address,
+		"network":         wallet.Network,
 		"derivation_path": wallet.DerivationPath,
-		"qr_data":        wallet.Address, // untuk QR code
+		"qr_data":         wallet.Address, // untuk QR code
 	}
 
 	return c.JSON(models.APIResponse{Success: true, Data: receiveInfo})
+}
+
+// ---------------------------------------------------------------------------
+// Wallet page endpoints
+// ---------------------------------------------------------------------------
+
+// Overview GET /api/v1/wallets/overview
+func (h *Handler) Overview(c fiber.Ctx) error {
+	data, err := h.svc.Overview(c.Context())
+	if err != nil {
+		return fail(c, fiber.StatusInternalServerError, err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: data})
+}
+
+// Addresses GET /api/v1/wallets/addresses
+func (h *Handler) Addresses(c fiber.Ctx) error {
+	data, err := h.svc.Addresses(c.Context())
+	if err != nil {
+		return fail(c, fiber.StatusInternalServerError, err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: data})
+}
+
+// Networks GET /api/v1/wallets/networks
+func (h *Handler) Networks(c fiber.Ctx) error {
+	data, err := h.svc.Networks(c.Context())
+	if err != nil {
+		return fail(c, fiber.StatusInternalServerError, err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: data})
+}
+
+// RefreshAll POST /api/v1/wallets/refresh
+func (h *Handler) RefreshAll(c fiber.Ctx) error {
+	data, err := h.svc.RefreshAll(c.Context())
+	if err != nil {
+		return fail(c, fiber.StatusBadGateway, err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Message: "saldo diperbarui", Data: data})
+}
+
+// RefreshWallet POST /api/v1/wallets/:walletID/refresh
+func (h *Handler) RefreshWallet(c fiber.Ctx) error {
+	id := c.Params("walletID")
+	if id == "" {
+		return fail(c, fiber.StatusBadRequest, errString("walletID is required"))
+	}
+	data, err := h.svc.RefreshWallet(c.Context(), id)
+	if err != nil {
+		return fail(c, statusFor(err), err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Message: "saldo diperbarui", Data: data})
+}
+
+// Rotate POST /api/v1/wallets/:walletID/rotate
+func (h *Handler) Rotate(c fiber.Ctx) error {
+	id := c.Params("walletID")
+	if id == "" {
+		return fail(c, fiber.StatusBadRequest, errString("walletID is required"))
+	}
+	data, err := h.svc.Rotate(c.Context(), id)
+	if err != nil {
+		return fail(c, statusFor(err), err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Message: "alamat baru dibuat", Data: data})
+}
+
+// SendEstimate POST /api/v1/wallets/:walletID/send/estimate
+func (h *Handler) SendEstimate(c fiber.Ctx) error {
+	id := c.Params("walletID")
+	if id == "" {
+		return fail(c, fiber.StatusBadRequest, errString("walletID is required"))
+	}
+	var req SendEstimateRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return fail(c, fiber.StatusBadRequest, errString("invalid request body: "+err.Error()))
+	}
+	data, err := h.svc.SendEstimate(c.Context(), id, req)
+	if err != nil {
+		return fail(c, statusFor(err), err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: data})
+}
+
+// Send POST /api/v1/wallets/:walletID/send
+func (h *Handler) Send(c fiber.Ctx) error {
+	id := c.Params("walletID")
+	if id == "" {
+		return fail(c, fiber.StatusBadRequest, errString("walletID is required"))
+	}
+	var req SendRequest
+	if err := c.Bind().Body(&req); err != nil {
+		return fail(c, fiber.StatusBadRequest, errString("invalid request body: "+err.Error()))
+	}
+	data, err := h.svc.Send(c.Context(), id, req)
+	if err != nil {
+		return fail(c, statusFor(err), err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Message: "transaksi dikirim", Data: data})
+}
+
+type errString string
+
+func (e errString) Error() string { return string(e) }
+
+func fail(c fiber.Ctx, status int, err error) error {
+	return c.Status(status).JSON(models.APIResponse{Success: false, Error: err.Error()})
+}
+
+func statusFor(err error) int {
+	switch {
+	case err == nil:
+		return fiber.StatusOK
+	case err.Error() == "wallet not found":
+		return fiber.StatusNotFound
+	default:
+		return fiber.StatusBadRequest
+	}
 }

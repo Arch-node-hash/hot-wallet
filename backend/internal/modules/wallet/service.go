@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"hotwallet/backend/config"
+	"hotwallet/backend/internal/blockchain/network"
 	"hotwallet/backend/internal/blockchain/wallet"
 	"hotwallet/backend/internal/infrastructure/store"
 )
@@ -34,31 +35,24 @@ func (s *Service) ListWallets(ctx context.Context) ([]WalletResponse, error) {
 
 	var resp []WalletResponse
 	for _, row := range rows {
-		// Ambil saldo per network untuk wallet ini
-		balances, err := s.store.GetWalletBalances(ctx, row.ID)
+		items, err := s.balanceItems(ctx, row)
 		if err != nil {
 			return nil, err
 		}
 
-		// Group saldo by network
-		networkBalances := make(map[string][]BalanceItem)
-		for _, b := range balances {
-			networkBalances[b.Network] = append(networkBalances[b.Network], BalanceItem{
-				TokenAddress: b.TokenAddress,
-				TokenSymbol:  b.TokenSymbol,
-				Balance:      b.Balance,
-				ValueUSD:     b.ValueUSD,
-			})
-		}
-
+		meta, _ := network.MetaFor(row.Network)
 		resp = append(resp, WalletResponse{
 			ID:              row.ID,
 			Name:            row.Name,
 			Address:         row.Address,
 			Network:         row.Network,
+			NetworkKey:      meta.Key,
+			TokenStandard:   meta.TokenStandard,
+			AddressType:     meta.AddressType,
+			AddressShort:    shortAddress(row.Address),
 			DerivationPath:  row.DerivationPath,
 			Balance:         row.Balance,
-			NetworkBalances: networkBalances,
+			NetworkBalances: map[string][]BalanceItem{row.Network: items},
 			CreatedAt:       row.CreatedAt,
 			UpdatedAt:       row.UpdatedAt,
 		})
@@ -77,20 +71,23 @@ func (s *Service) GetWallet(ctx context.Context, id string) (*WalletDetailRespon
 		return nil, fmt.Errorf("wallet not found")
 	}
 
-	balances, err := s.store.GetWalletBalances(ctx, row.ID)
+	items, err := s.balanceItems(ctx, *row)
 	if err != nil {
 		return nil, err
 	}
 
-	// Group saldo by network
-	networkBalances := make(map[string][]BalanceItem)
-	for _, b := range balances {
-		networkBalances[b.Network] = append(networkBalances[b.Network], BalanceItem{
-			TokenAddress: b.TokenAddress,
-			TokenSymbol:  b.TokenSymbol,
-			Balance:      b.Balance,
-			ValueUSD:     b.ValueUSD,
-		})
+	meta, _ := network.MetaFor(row.Network)
+	total := "0"
+	native := "0"
+	usdt := "0"
+	for _, item := range items {
+		total = addUSD(total, item.ValueUSD)
+		if item.IsNative {
+			native = item.Balance
+		}
+		if strings.EqualFold(item.TokenSymbol, "USDT") {
+			usdt = item.Balance
+		}
 	}
 
 	return &WalletDetailResponse{
@@ -98,12 +95,57 @@ func (s *Service) GetWallet(ctx context.Context, id string) (*WalletDetailRespon
 		Name:            row.Name,
 		Address:         row.Address,
 		Network:         row.Network,
+		NetworkKey:      meta.Key,
+		TokenStandard:   meta.TokenStandard,
+		AddressType:     meta.AddressType,
+		AddressShort:    shortAddress(row.Address),
+		NativeSymbol:    meta.NativeSymbol,
+		NativeBalance:   native,
+		USDTBalance:     usdt,
+		TotalValueUSD:   total,
 		DerivationPath:  row.DerivationPath,
 		Balance:         row.Balance,
-		NetworkBalances: networkBalances,
+		NetworkBalances: map[string][]BalanceItem{row.Network: items},
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
 	}, nil
+}
+
+// balanceItems membaca saldo wallet dan menghitung nilai USD-nya memakai harga
+// dari tabel token_prices (stablecoin fallback $1).
+func (s *Service) balanceItems(ctx context.Context, row store.WalletRow) ([]BalanceItem, error) {
+	balances, err := s.store.GetWalletBalances(ctx, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	prices, err := s.store.ListTokenPrices(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tokens, err := s.store.ListTokens()
+	if err != nil {
+		return nil, err
+	}
+
+	idx := newPriceIndex(prices)
+	meta, _ := network.MetaFor(row.Network)
+
+	items := make([]BalanceItem, 0, len(balances))
+	for _, b := range balances {
+		price, change := idx.lookup(row.Network, b.TokenAddress, b.TokenSymbol)
+		items = append(items, BalanceItem{
+			TokenAddress: b.TokenAddress,
+			TokenSymbol:  b.TokenSymbol,
+			Name:         tokenName(tokens, row.Network, b.TokenAddress),
+			Decimals:     tokenDecimals(tokens, row.Network, b.TokenAddress, meta.NativeDecimals),
+			Balance:      b.Balance,
+			PriceUSD:     price,
+			ValueUSD:     mulUSD(b.Balance, price),
+			Change24h:    change,
+			IsNative:     b.TokenAddress == "",
+		})
+	}
+	return items, nil
 }
 
 // CreateWallet membuat wallet baru dari private key atau generate baru
@@ -235,8 +277,9 @@ func (s *Service) UpdateWalletAddress(ctx context.Context, id string, req Update
 		return nil, fmt.Errorf("address %s already used by another wallet on %s", address, network)
 	}
 
-	// Update wallet
-	if err := s.store.UpdateWalletAddress(ctx, id, address, network, derivationPath); err != nil {
+	// Update wallet. Endpoint ini mengganti alamat dengan alamat dari private
+	// key yang dikirim client, jadi selalu index 0.
+	if err := s.store.UpdateWalletAddress(ctx, id, address, network, derivationPath, 0); err != nil {
 		return nil, err
 	}
 
@@ -294,6 +337,10 @@ type WalletResponse struct {
 	Name            string                   `json:"name"`
 	Address         string                   `json:"address"`
 	Network         string                   `json:"network"`
+	NetworkKey      string                   `json:"network_key,omitempty"`
+	TokenStandard   string                   `json:"token_standard,omitempty"`
+	AddressType     string                   `json:"address_type,omitempty"`
+	AddressShort    string                   `json:"address_short,omitempty"`
 	DerivationPath  string                   `json:"derivation_path"`
 	Balance         string                   `json:"balance"`
 	NetworkBalances map[string][]BalanceItem `json:"network_balances"`
@@ -306,6 +353,14 @@ type WalletDetailResponse struct {
 	Name            string                   `json:"name"`
 	Address         string                   `json:"address"`
 	Network         string                   `json:"network"`
+	NetworkKey      string                   `json:"network_key,omitempty"`
+	TokenStandard   string                   `json:"token_standard,omitempty"`
+	AddressType     string                   `json:"address_type,omitempty"`
+	AddressShort    string                   `json:"address_short,omitempty"`
+	NativeSymbol    string                   `json:"native_symbol,omitempty"`
+	NativeBalance   string                   `json:"native_balance,omitempty"`
+	USDTBalance     string                   `json:"usdt_balance,omitempty"`
+	TotalValueUSD   string                   `json:"total_value_usd"`
 	DerivationPath  string                   `json:"derivation_path"`
 	Balance         string                   `json:"balance"`
 	NetworkBalances map[string][]BalanceItem `json:"network_balances"`
@@ -314,8 +369,13 @@ type WalletDetailResponse struct {
 }
 
 type BalanceItem struct {
-	TokenAddress string `json:"token_address,omitempty"`
-	TokenSymbol  string `json:"token_symbol"`
-	Balance      string `json:"balance"`
-	ValueUSD     string `json:"value_usd"`
+	TokenAddress string  `json:"token_address,omitempty"`
+	TokenSymbol  string  `json:"token_symbol"`
+	Name         string  `json:"name,omitempty"`
+	Decimals     int     `json:"decimals,omitempty"`
+	Balance      string  `json:"balance"`
+	PriceUSD     string  `json:"price_usd"`
+	ValueUSD     string  `json:"value_usd"`
+	Change24h    float64 `json:"change_24h"`
+	IsNative     bool    `json:"is_native"`
 }
