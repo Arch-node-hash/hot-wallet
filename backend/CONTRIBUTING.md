@@ -199,7 +199,10 @@ Wallet menggunakan private key langsung tanpa seed phrase:
   array `solana-keygen`). Kurva ed25519, jadi tidak bisa memakai key EVM.
 
 Private keys dibaca dari environment variable dan **tidak disimpan ke database**.
-Saat startup, `AutoCreateWalletFromEnv` membuat wallet yang belum ada.
+Saat startup, `AutoCreateWalletFromEnv` membuat wallet yang belum ada. Kalau
+key diganti, alamat wallet tunggal di jaringan itu ikut diperbarui (deteksi
+dari perbandingan alamat hasil derivasi); saldo lama dihapus. Jaringan dengan
+lebih dari satu wallet dilewati dan harus di-update lewat `PUT /address`.
 
 ### `pkg/auth/token.go`
 

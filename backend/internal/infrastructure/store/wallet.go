@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"hotwallet/backend/config"
@@ -150,9 +152,30 @@ func (s *Store) DeleteWallet(ctx context.Context, id string) error {
 	return nil
 }
 
-// AutoCreateWalletFromEnv membuat wallet otomatis dari private key di env.
-// Satu ETH_PRIVATE_KEY dipakai untuk semua jaringan EVM (alamat sama, satu
-// baris wallet per jaringan). Hanya membuat wallet yang belum ada.
+// envWalletSpec adalah definisi wallet yang dikelola dari private key env.
+type envWalletSpec struct {
+	Network        string
+	DisplayName    string
+	DerivationPath string
+	IDPrefix       string
+}
+
+func evmEnvWallets() []envWalletSpec {
+	return []envWalletSpec{
+		{"Ethereum Mainnet", "Ethereum Wallet", "m/44'/60'/0'/0/0", "eth"},
+		{"BNB Chain", "BNB Chain Wallet", "m/44'/60'/0'/0/0", "bsc"},
+		{"Arbitrum One", "Arbitrum Wallet", "m/44'/60'/0'/0/0", "arb"},
+		{"Robinhood Chain", "Robinhood Wallet", "m/44'/60'/0'/0/0", "rob"},
+	}
+}
+
+func solanaEnvWallet() envWalletSpec {
+	return envWalletSpec{"Solana Mainnet", "Solana Wallet", "m/44'/501'/0'/0'", "sol"}
+}
+
+// AutoCreateWalletFromEnv menyinkronkan wallet dengan private key di env.
+// Satu ETH_PRIVATE_KEY dipakai untuk semua jaringan EVM. Kalau private key
+// diganti, alamat wallet di jaringan tersebut ikut diperbarui.
 func (s *Store) AutoCreateWalletFromEnv(ctx context.Context, cfg config.Config) error {
 	var errs []error
 
@@ -162,33 +185,9 @@ func (s *Store) AutoCreateWalletFromEnv(ctx context.Context, cfg config.Config) 
 		if err != nil {
 			errs = append(errs, fmt.Errorf("ETH_PRIVATE_KEY tidak valid: %w", err))
 		} else {
-			evmNetworks := []struct {
-				Name           string
-				DisplayName    string
-				DerivationPath string
-				IDPrefix       string
-			}{
-				{"Ethereum Mainnet", "Ethereum Wallet", "m/44'/60'/0'/0/0", "eth"},
-				{"BNB Chain", "BNB Chain Wallet", "m/44'/60'/0'/0/0", "bsc"},
-				{"Arbitrum One", "Arbitrum Wallet", "m/44'/60'/0'/0/0", "arb"},
-				{"Robinhood Chain", "Robinhood Wallet", "m/44'/60'/0'/0/0", "rob"},
-			}
-
-			for _, net := range evmNetworks {
-				// Cek apakah sudah ada wallet untuk network ini dengan address ini
-				existing, _ := s.GetWalletByAddressAndNetwork(ctx, info.Address, net.Name)
-				if existing == nil {
-					walletRow := &WalletRow{
-						ID:             net.IDPrefix + "-" + info.Address[2:10],
-						Name:           net.DisplayName,
-						Address:        info.Address,
-						Network:        net.Name,
-						DerivationPath: net.DerivationPath,
-						Balance:        "0",
-					}
-					if err := s.CreateWallet(ctx, walletRow); err != nil {
-						errs = append(errs, fmt.Errorf("auto create %s wallet: %w", net.Name, err))
-					}
+			for _, spec := range evmEnvWallets() {
+				if err := s.syncEnvWallet(ctx, info.Address, spec); err != nil {
+					errs = append(errs, err)
 				}
 			}
 		}
@@ -199,32 +198,96 @@ func (s *Store) AutoCreateWalletFromEnv(ctx context.Context, cfg config.Config) 
 		info, err := wallet.ParseSolanaPrivateKey(cfg.SolanaPrivateKey)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("SOLANA_PRIVATE_KEY tidak valid: %w", err))
-		} else {
-			// Cek apakah sudah ada wallet Solana
-			existing, _ := s.GetWalletByAddressAndNetwork(ctx, info.Address, "Solana Mainnet")
-			if existing == nil {
-				walletRow := &WalletRow{
-					ID:             "sol-" + info.Address[:8],
-					Name:           "Solana Wallet",
-					Address:        info.Address,
-					Network:        "Solana Mainnet",
-					DerivationPath: "m/44'/501'/0'/0'",
-					Balance:        "0",
-				}
-				if err := s.CreateWallet(ctx, walletRow); err != nil {
-					errs = append(errs, fmt.Errorf("auto create Solana wallet: %w", err))
-				}
-			}
+		} else if err := s.syncEnvWallet(ctx, info.Address, solanaEnvWallet()); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
 	return errors.Join(errs...)
 }
 
-// UpdateWalletAddress memperbarui alamat wallet (saat user ganti private key)
+// syncEnvWallet memastikan wallet satu jaringan memakai alamat dari env.
+//
+// Deteksi perubahan key tidak perlu menyimpan key-nya: alamat adalah sidik
+// jari deterministik dari private key. Alamat hasil derivasi dibandingkan
+// dengan alamat yang tersimpan; kalau berbeda berarti key berubah.
+//
+// Aturan update:
+//   - belum ada wallet di jaringan itu  -> buat baru
+//   - ada tepat satu wallet             -> perbarui alamatnya
+//   - ada lebih dari satu wallet        -> jangan sentuh, kembalikan error
+//     supaya user memilih sendiri lewat PUT /address
+func (s *Store) syncEnvWallet(ctx context.Context, address string, spec envWalletSpec) error {
+	wallets, err := s.ListWallets(ctx)
+	if err != nil {
+		return err
+	}
+
+	var others []WalletRow
+	for _, w := range wallets {
+		if w.Network != spec.Network {
+			continue
+		}
+		if strings.EqualFold(w.Address, address) {
+			return nil // private key sama, tidak ada yang berubah
+		}
+		others = append(others, w)
+	}
+
+	switch len(others) {
+	case 0:
+		row := &WalletRow{
+			ID:             spec.IDPrefix + "-" + walletIDSuffix(address),
+			Name:           spec.DisplayName,
+			Address:        address,
+			Network:        spec.Network,
+			DerivationPath: spec.DerivationPath,
+			Balance:        "0",
+		}
+		if err := s.CreateWallet(ctx, row); err != nil {
+			return fmt.Errorf("auto create %s wallet: %w", spec.Network, err)
+		}
+		log.Printf("wallet: %s dibuat dari env (%s)", row.ID, address)
+
+	case 1:
+		row := others[0]
+		if err := s.UpdateWalletAddress(ctx, row.ID, address, spec.Network, spec.DerivationPath); err != nil {
+			return fmt.Errorf("sync %s wallet: %w", spec.Network, err)
+		}
+		log.Printf("wallet: %s (%s) alamat diperbarui ke %s", row.ID, spec.Network, address)
+
+	default:
+		return fmt.Errorf(
+			"%s punya %d wallet dan tidak ada yang cocok dengan private key env; "+
+				"perbarui manual lewat PUT /api/v1/wallets/{id}/address",
+			spec.Network, len(others),
+		)
+	}
+
+	return nil
+}
+
+// walletIDSuffix mengambil 8 karakter alamat untuk ID wallet.
+func walletIDSuffix(address string) string {
+	address = strings.TrimPrefix(address, "0x")
+	if len(address) > 8 {
+		address = address[:8]
+	}
+	return address
+}
+
+// UpdateWalletAddress memperbarui alamat wallet (saat user ganti private key).
+// Saldo lama dihapus karena milik alamat lama; watcher akan mengisi ulang.
 func (s *Store) UpdateWalletAddress(ctx context.Context, id, newAddress, newNetwork, newDerivationPath string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.db.ExecContext(ctx, `
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("store: update wallet address %s: %w", id, err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE wallets SET
 			address = ?,
 			network = ?,
@@ -232,9 +295,19 @@ func (s *Store) UpdateWalletAddress(ctx context.Context, id, newAddress, newNetw
 			balance = '0',
 			updated_at = ?
 		WHERE id = ?
-	`, newAddress, newNetwork, newDerivationPath, now, id)
-	if err != nil {
+	`, newAddress, newNetwork, newDerivationPath, now, id); err != nil {
 		return fmt.Errorf("store: update wallet address %s: %w", id, err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM wallet_balances WHERE wallet_id = ?`, id); err != nil {
+		return fmt.Errorf("store: reset balances %s: %w", id, err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM network_summaries WHERE wallet_id = ?`, id); err != nil {
+		return fmt.Errorf("store: reset summaries %s: %w", id, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: commit update wallet address %s: %w", id, err)
 	}
 	return nil
 }

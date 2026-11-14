@@ -99,6 +99,15 @@ Private keys **tidak disimpan di database** - hanya di environment variable.
 Saat startup, wallet yang belum ada dibuat otomatis dari key tersebut (satu
 wallet per jaringan). File `.env` tidak ikut git — **backup file itu dengan aman**.
 
+Kalau private key diganti lalu server dijalankan ulang, alamat wallet ikut
+diperbarui **otomatis** (tanpa menambah wallet baru), selama jaringan tersebut
+hanya punya satu wallet. Deteksinya memakai alamat hasil derivasi key: alamat
+berbeda = key berbeda. Saldo lama dihapus dan akan diisi ulang oleh watcher.
+Kalau satu jaringan punya lebih dari satu wallet, auto-sync dilewati dan
+alamat harus diperbarui manual lewat
+`PUT /api/v1/wallets/{walletID}/address`. ID wallet sengaja tidak berubah
+agar referensi ke wallet tersebut tetap stabil.
+
 ## Struktur
 
 ```
