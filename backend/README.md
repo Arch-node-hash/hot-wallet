@@ -114,7 +114,9 @@ wallet) dan menyimpan setiap hasil pembacaan ke SQLite:
   mengizinkan request JSON-RPC lewat WS) untuk saldo awal dan refresh.
 
 Hasil ditulis ke `wallet_balances`, `wallets.balance` (native), dan
-`network_summaries`. Metadata token yang dipantau ada di tabel `tokens`.
+`network_summaries`. Yang dipantau hanya **saldo native + USDT** per jaringan
+(Robinhood Chain belum punya kontrak USDT resmi, jadi native saja). Daftarnya
+ada di `internal/blockchain/tokenmeta/defaults.go` dan tabel `tokens`.
 
 ## Private Keys untuk Wallet
 
@@ -231,7 +233,7 @@ Database dibuat otomatis di `data/hotwallet.db`. Tabel yang dipakai:
 | `wallets` | Wallet + saldo native terakhir |
 | `wallet_balances` | Saldo native & token per wallet/jaringan (hasil watcher) |
 | `network_summaries` | Ringkasan saldo per wallet/jaringan |
-| `tokens` | Metadata token yang dipantau (ERC-20/SPL) |
+| `tokens` | Metadata token yang dipantau (native + USDT) |
 | `token_prices` | Harga token per jaringan (sumber nilai USD; diisi dari luar) |
 | `rpc_configs` | Endpoint RPC + WSS per jaringan |
 | `transactions` | Riwayat transaksi |

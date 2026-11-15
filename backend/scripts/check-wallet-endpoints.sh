@@ -80,7 +80,17 @@ else
   [ -f data/hotwallet.db ] || { echo "data/hotwallet.db tidak ditemukan" >&2; exit 2; }
 
   mkdir -p "$WORK/data"
-  cp data/hotwallet.db "$WORK/hotwallet.db"
+  # Salin lewat API backup SQLite supaya isi WAL ikut (cp biasa bisa
+  # menghasilkan snapshot lama saat server lain sedang menulis).
+  python3 - data/hotwallet.db "$WORK/hotwallet.db" <<'PY'
+import sqlite3, sys
+src = sqlite3.connect(sys.argv[1], timeout=10)
+dst = sqlite3.connect(sys.argv[2])
+with dst:
+    src.backup(dst)
+dst.close()
+src.close()
+PY
   rm -f "$WORK/hotwallet.db-shm" "$WORK/hotwallet.db-wal"
 
   pick_port() {
