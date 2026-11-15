@@ -491,12 +491,32 @@ curl -X POST http://localhost:5009/api/v1/wallets/eth-1Be31A94/send \
 Auto-lock jaringan mengikuti format `to`: alamat EVM (0x…) hanya untuk jaringan
 EVM, alamat Solana base58 hanya untuk Solana.
 
-### `GET /api/v1/contacts` — Contact Book
+## Kontrak API Contact Book
+
+Contact book dipakai sebagai pemilih tujuan pada form kirim. Baru daftar yang
+sudah berfungsi; tulis/ubah/hapus masih `501`.
+
+| Method | Path | Status |
+|---|---|---|
+| GET | `/api/v1/contacts` | ✅ |
+| POST | `/api/v1/contacts` | 501 |
+| GET | `/api/v1/contacts/{contactID}` | 501 |
+| PUT | `/api/v1/contacts/{contactID}` | 501 |
+| DELETE | `/api/v1/contacts/{contactID}` | 501 |
+
+```bash
+curl http://localhost:5009/api/v1/contacts
+```
 
 ```json
-{ "success": true, "data": [ { "id": "c1", "name": "Alice",
-  "address": "0x…", "network": "Ethereum Mainnet", "notes": "" } ] }
+{ "success": true, "data": [] }
 ```
+
+Saat ada isinya, tiap entri berbentuk
+`{id, name, address, network, notes, created_at, updated_at}` dan diurutkan
+berdasarkan nama.
+
+## Kontrak API Setting
 
 ### `GET/PUT /api/v1/settings/security` — PIN
 
@@ -507,11 +527,15 @@ curl -X PUT http://localhost:5009/api/v1/settings/security \
 ```
 
 ```json
-{ "success": true, "data": { "pin_enabled": true, "biometric_enabled": false, "auto_lock_minutes": 5 } }
+{ "success": true, "data": { "pin_enabled": true, "biometric_enabled": false, "auto_lock_minutes": 5, "updated_at": "2026-11-15T06:09:55Z" } }
 ```
 
-PIN disimpan sebagai hash SHA-256 (pengaman dasar, bukan enkripsi private key)
-dan diverifikasi pada langkah konfirmasi `send`.
+Field `PUT` yang diterima: `pin` (minimal 4 karakter), `remove_pin` (hapus
+PIN), `biometric_enabled`, dan `auto_lock_minutes`. PIN disimpan sebagai hash
+SHA-256 tanpa salt (pengaman dasar, bukan enkripsi private key) dan
+diverifikasi pada langkah konfirmasi `send` bila `pin_enabled=true`.
+
+`/settings/rpc` dan `/settings/backup` masih `501`.
 
 ## Mengisi logika
 
@@ -619,6 +643,7 @@ backend/
 - `GET /wallets/overview` - Tab ALL: total USD + perubahan 24 jam + kartu jaringan
 - `GET /wallets/addresses` - Modal alamat 2 kolom (EVM + Solana)
 - `GET /wallets/networks` - Metadata tab jaringan
+- `GET /wallets/diagnostics` - Cek kesiapan RPC/chain/saldo/token (read-only)
 - `POST /wallets/refresh` - Baca ulang saldo semua wallet
 - `GET /wallets/{id}` - Detail wallet (termasuk alamat + saldo token)
 - `GET /wallets/{id}/balance` - Saldo wallet + ringkasan per jaringan
