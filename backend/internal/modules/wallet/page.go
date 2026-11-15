@@ -615,7 +615,8 @@ func (s *Service) refreshWallet(ctx context.Context, row store.WalletRow) error 
 	if err != nil {
 		return err
 	}
-	if config == nil || config.RPCURL == "" {
+	rpc := resolveRPCURL(config, meta)
+	if rpc == "" {
 		return fmt.Errorf("rpc_url untuk %s belum diisi", row.Network)
 	}
 
@@ -632,7 +633,7 @@ func (s *Service) refreshWallet(ctx context.Context, row store.WalletRow) error 
 	var rows []store.BalanceRow
 
 	if meta.Chain == network.ChainSolana {
-		client := solana.NewClient(config.RPCURL)
+		client := solana.NewClient(rpc)
 		solTokens := solanaTokensFor(tokens, meta.Name)
 
 		lamports, err := client.Balance(ctx, row.Address)
@@ -665,7 +666,7 @@ func (s *Service) refreshWallet(ctx context.Context, row store.WalletRow) error 
 			})
 		}
 	} else {
-		client := evm.NewClient(config.RPCURL)
+		client := evm.NewClient(rpc)
 		evmTokens := evmTokensFor(tokens, meta.Name)
 
 		result, err := client.BatchBalances(ctx, []string{row.Address}, evmTokens)
@@ -739,7 +740,8 @@ func (s *Service) SendEstimate(ctx context.Context, id string, req SendEstimateR
 	if err != nil {
 		return nil, err
 	}
-	if config == nil || config.RPCURL == "" {
+	rpc := resolveRPCURL(config, meta)
+	if rpc == "" {
 		return nil, fmt.Errorf("rpc_url untuk %s belum diisi", row.Network)
 	}
 
@@ -767,7 +769,7 @@ func (s *Service) SendEstimate(ctx context.Context, id string, req SendEstimateR
 		return resp, nil
 	}
 
-	client := evm.NewClient(config.RPCURL)
+	client := evm.NewClient(rpc)
 	gasPrice, err := client.GasPrice(ctx)
 	if err != nil {
 		return nil, err
@@ -843,7 +845,8 @@ func (s *Service) Send(ctx context.Context, id string, req SendRequest) (*SendRe
 	if err != nil {
 		return nil, err
 	}
-	if config == nil || config.RPCURL == "" {
+	rpc := resolveRPCURL(config, meta)
+	if rpc == "" {
 		return nil, fmt.Errorf("rpc_url untuk %s belum diisi", row.Network)
 	}
 
@@ -857,7 +860,7 @@ func (s *Service) Send(ctx context.Context, id string, req SendRequest) (*SendRe
 	}
 
 	if meta.Chain == network.ChainSolana {
-		client := solana.NewClient(config.RPCURL)
+		client := solana.NewClient(rpc)
 		blockhash, err := client.LatestBlockhash(ctx)
 		if err != nil {
 			return nil, err
@@ -890,7 +893,7 @@ func (s *Service) Send(ctx context.Context, id string, req SendRequest) (*SendRe
 		return resp, nil
 	}
 
-	client := evm.NewClient(config.RPCURL)
+	client := evm.NewClient(rpc)
 	chainID, err := client.ChainID(ctx)
 	if err != nil {
 		return nil, err
@@ -958,6 +961,23 @@ func (s *Service) Send(ctx context.Context, id string, req SendRequest) (*SendRe
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// resolveRPCURL mengembalikan URL HTTP RPC yang dipakai untuk membaca saldo dan
+// mengirim transaksi. Untuk Solana, endpoint publik (mis. PublicNode) hanya
+// menyediakan WSS tanpa melayani request JSON-RPC lewat WebSocket, jadi URL
+// HTTP diturunkan dari WSS bila rpc_url kosong — sama seperti watcher.
+func resolveRPCURL(config *store.RPCConfig, meta network.Meta) string {
+	if config == nil {
+		return ""
+	}
+	if strings.TrimSpace(config.RPCURL) != "" {
+		return config.RPCURL
+	}
+	if meta.Chain == network.ChainSolana && strings.TrimSpace(config.WSSURL) != "" {
+		return solana.HTTPFromWS(config.WSSURL)
+	}
+	return ""
+}
 
 type sendToken struct {
 	address  string

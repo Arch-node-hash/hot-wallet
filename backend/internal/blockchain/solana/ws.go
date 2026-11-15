@@ -412,6 +412,14 @@ func httpFromWS(url string) string {
 	}
 }
 
+// HTTPFromWS menurunkan URL HTTP dari URL WebSocket yang sama. Dipakai untuk
+// endpoint yang hanya menyediakan WSS tetapi tidak melayani request JSON-RPC
+// lewat WebSocket (mis. Solana PublicNode), sehingga klien HTTP tetap bisa
+// memakai host yang sama walau rpc_url belum diisi.
+func HTTPFromWS(url string) string {
+	return httpFromWS(url)
+}
+
 func formatUnits(value *big.Int, decimals uint8) string {
 	if value == nil {
 		return "0"

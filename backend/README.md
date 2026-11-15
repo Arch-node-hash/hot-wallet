@@ -37,6 +37,28 @@ curl http://localhost:5009/
 curl http://localhost:5009/api/v1/health
 ```
 
+## Preflight mainnet (read-only)
+
+Sebelum mengirim dana nyata, periksa kesiapan jalur kirim tanpa menandatangani
+atau menyiarkan transaksi apa pun:
+
+```bash
+go run ./cmd/preflight                       # semua jaringan
+go run ./cmd/preflight -network=bsc,solana   # sebagian saja
+```
+
+Per jaringan, preflight melaporkan:
+
+- endpoint hidup (WebSocket untuk EVM, HTTP untuk Solana),
+- `chain id` cocok dengan mainnet yang diharapkan,
+- alamat wallet, saldo native, nonce, dan harga gas,
+- keberadaan kontrak token (decimals on-chain / mint Solana).
+
+Catatan: PublicNode Solana menolak request JSON-RPC lewat WebSocket, jadi query
+Solana memakai HTTP yang diturunkan dari `wss_url` bila `rpc_url` kosong. Jalur
+kirim aplikasi melakukan hal yang sama (`resolveRPCURL`), sehingga `SOLANA_RPC`
+tidak wajib selama `SOLANA_WSS` diisi.
+
 ## Konfigurasi
 
 Semua lewat environment variable (atau file `backend/.env`):
@@ -129,6 +151,7 @@ menyimpan kunci tambahan**:
 ```
 backend/
 ├── cmd/api/main.go          # Entry point + seed RPC/token + start watcher
+├── cmd/preflight/main.go    # Preflight mainnet read-only (WS/HTTP)
 ├── config/config.go         # Konfigurasi via env/.env
 ├── data/
 │   ├── avatars/

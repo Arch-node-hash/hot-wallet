@@ -54,6 +54,7 @@ Aturan pembagian tanggung jawab:
 ```
 backend/
 ├── cmd/api/main.go
+├── cmd/preflight/main.go   # preflight mainnet read-only (WS/HTTP)
 ├── config/config.go
 ├── data/
 │   ├── avatars/
