@@ -106,6 +106,7 @@ func setupAPIV1Routes(app *fiber.App, walletHandler *wallet.Handler, contactHand
 	walletGroup.Get("/overview", walletHandler.Overview)
 	walletGroup.Get("/addresses", walletHandler.Addresses)
 	walletGroup.Get("/networks", walletHandler.Networks)
+	walletGroup.Get("/diagnostics", walletHandler.Diagnostics)
 	walletGroup.Post("/refresh", walletHandler.RefreshAll)
 
 	walletGroup.Get("/", walletHandler.ListWallets)

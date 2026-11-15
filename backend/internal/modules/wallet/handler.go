@@ -260,6 +260,15 @@ func (h *Handler) Networks(c fiber.Ctx) error {
 	return c.JSON(models.APIResponse{Success: true, Data: data})
 }
 
+// Diagnostics GET /api/v1/wallets/diagnostics
+func (h *Handler) Diagnostics(c fiber.Ctx) error {
+	data, err := h.svc.Diagnostics(c.Context())
+	if err != nil {
+		return fail(c, fiber.StatusInternalServerError, err)
+	}
+	return c.JSON(models.APIResponse{Success: true, Data: data})
+}
+
 // RefreshAll POST /api/v1/wallets/refresh
 func (h *Handler) RefreshAll(c fiber.Ctx) error {
 	data, err := h.svc.RefreshAll(c.Context())

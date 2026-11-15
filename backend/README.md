@@ -37,22 +37,19 @@ curl http://localhost:5009/
 curl http://localhost:5009/api/v1/health
 ```
 
-## Preflight mainnet (read-only)
+## Diagnostics mainnet (read-only)
 
-Sebelum mengirim dana nyata, periksa kesiapan jalur kirim tanpa menandatangani
-atau menyiarkan transaksi apa pun:
+Kesiapan jalur kirim tersedia sebagai endpoint di dalam server (bukan binary
+terpisah):
 
 ```bash
-go run ./cmd/preflight                       # semua jaringan
-go run ./cmd/preflight -network=bsc,solana   # sebagian saja
+curl http://localhost:5009/api/v1/wallets/diagnostics
 ```
 
-Per jaringan, preflight melaporkan:
-
-- endpoint hidup (WebSocket untuk EVM, HTTP untuk Solana),
-- `chain id` cocok dengan mainnet yang diharapkan,
-- alamat wallet, saldo native, nonce, dan harga gas,
-- keberadaan kontrak token (decimals on-chain / mint Solana).
+Per jaringan, endpoint melaporkan: endpoint hidup (WebSocket untuk EVM, HTTP
+untuk Solana), `chain id` vs yang diharapkan, alamat wallet, saldo native,
+nonce, harga gas, dan keberadaan kontrak token. Endpoint ini hanya membaca —
+tidak menandatangani atau menyiarkan transaksi.
 
 Catatan: PublicNode Solana menolak request JSON-RPC lewat WebSocket, jadi query
 Solana memakai HTTP yang diturunkan dari `wss_url` bila `rpc_url` kosong. Jalur
@@ -151,7 +148,6 @@ menyimpan kunci tambahan**:
 ```
 backend/
 ├── cmd/api/main.go          # Entry point + seed RPC/token + start watcher
-├── cmd/preflight/main.go    # Preflight mainnet read-only (WS/HTTP)
 ├── config/config.go         # Konfigurasi via env/.env
 ├── data/
 │   ├── avatars/
@@ -237,6 +233,7 @@ Semua endpoint fitur ada di bawah `/api/v1`. Endpoint **Wallet** (kecuali
 | GET | `/api/v1/wallets/overview` | Tab ALL: total USD, perubahan 24 jam, kartu jaringan | ✅ |
 | GET | `/api/v1/wallets/addresses` | Modal alamat 2 kolom (EVM + Solana) | ✅ |
 | GET | `/api/v1/wallets/networks` | Metadata tab jaringan | ✅ |
+| GET | `/api/v1/wallets/diagnostics` | Cek kesiapan RPC/chain/saldo/token (read-only) | ✅ |
 | POST | `/api/v1/wallets/refresh` | Baca ulang saldo semua wallet, kembalikan overview | ✅ |
 | GET | `/api/v1/wallets/{walletID}` | Detail wallet + saldo per token | ✅ |
 | GET | `/api/v1/wallets/{walletID}/balance` | Saldo wallet + ringkasan per jaringan | ✅ |
