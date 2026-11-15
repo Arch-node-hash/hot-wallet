@@ -20,47 +20,6 @@ import (
 	"hotwallet/backend/internal/infrastructure/store"
 )
 
-// DiagnosticsResponse adalah hasil pemeriksaan kesiapan jalur kirim per
-// jaringan. Endpoint ini hanya membaca (tidak menandatangani/menyiarkan).
-type DiagnosticsResponse struct {
-	CheckedAt string               `json:"checked_at"`
-	Ready     int                  `json:"ready"`
-	Total     int                  `json:"total"`
-	Networks  []NetworkDiagnostics `json:"networks"`
-}
-
-// NetworkDiagnostics adalah status satu jaringan.
-type NetworkDiagnostics struct {
-	NetworkKey      string             `json:"network_key"`
-	Network         string             `json:"network"`
-	Transport       string             `json:"transport"`
-	Address         string             `json:"address,omitempty"`
-	Reachable       bool               `json:"reachable"`
-	ChainID         int64              `json:"chain_id,omitempty"`
-	ChainIDExpected int64              `json:"chain_id_expected,omitempty"`
-	ChainIDOK       bool               `json:"chain_id_ok"`
-	NativeSymbol    string             `json:"native_symbol"`
-	NativeBalance   string             `json:"native_balance,omitempty"`
-	Nonce           uint64             `json:"nonce,omitempty"`
-	GasPriceWei     string             `json:"gas_price_wei,omitempty"`
-	GasPriceGwei    string             `json:"gas_price_gwei,omitempty"`
-	GasFeeNative    string             `json:"gas_fee_native,omitempty"`
-	GasReady        bool               `json:"gas_ready"`
-	Blockhash       string             `json:"blockhash,omitempty"`
-	Version         string             `json:"version,omitempty"`
-	Tokens          []TokenDiagnostics `json:"tokens"`
-	Error           string             `json:"error,omitempty"`
-}
-
-// TokenDiagnostics adalah status satu kontrak token.
-type TokenDiagnostics struct {
-	Symbol   string `json:"symbol"`
-	Address  string `json:"address"`
-	Decimals int    `json:"decimals,omitempty"`
-	OK       bool   `json:"ok"`
-	Error    string `json:"error,omitempty"`
-}
-
 // Diagnostics memeriksa semua jaringan secara paralel: RPC hidup, chain id
 // cocok, alamat wallet terbaca, saldo/nonce/gas, dan kontrak token.
 func (s *Service) Diagnostics(ctx context.Context) (*DiagnosticsResponse, error) {

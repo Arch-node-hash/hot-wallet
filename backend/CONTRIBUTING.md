@@ -42,7 +42,7 @@ Aturan pembagian tanggung jawab:
 |---|---|---|
 | `handler.go` | bind JSON, ambil `:id`, pilih status code, panggil service | logika bisnis, akses database langsung |
 | `service.go` | validasi, aturan bisnis, gabung beberapa repo | `fiber.Ctx`, status code |
-| `model.go` | struct + tag JSON + `GetID`/`SetID` | akses database, HTTP |
+| `model.go` | semua struct request/response/view + tag JSON + `GetID`/`SetID` | akses database, HTTP |
 | `pkg/crud/generic.go` | operasi koleksi generik | aturan bisnis domain |
 | `store/sqlite.go` | koneksi, Load/Save, transaksi | tahu soal Contact/dll |
 | `router.go` | wiring + daftar route | logika bisnis |
@@ -102,7 +102,7 @@ backend/
 
 | Domain | Model utama | Tabel | Route |
 |---|---|---|---|
-| `wallet` | `Wallet`, `WalletBalance`, `NetworkSummary`, view halaman di `page.go` | `wallets`, `wallet_balances`, `network_summaries`, `token_prices` | `/api/v1/wallets` |
+| `wallet` | `Wallet`, `WalletBalance`, `NetworkSummary`, seluruh DTO di `model.go` | `wallets`, `wallet_balances`, `network_summaries`, `token_prices` | `/api/v1/wallets` |
 | `portfolio` | `PortfolioSummary`, `PortfolioToken`, `NetworkAsset` | `portfolio_summary`, `portfolio_tokens`, `network_assets` | `/api/v1/portfolio` |
 | `transaction` | `Transaction` | `transactions` | `/api/v1/transactions` |
 | `contact` | `Contact` | `contacts` | `/api/v1/contacts` |
