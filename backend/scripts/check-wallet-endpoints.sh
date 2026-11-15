@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
 #
-# Cek seluruh endpoint halaman Wallet pada server yang benar-benar berjalan.
+# Cek seluruh endpoint halaman Wallet.
 #
-# Skrip ini:
-#   1. build ./cmd/api,
-#   2. menyalin data/hotwallet.db ke direktori sementara (DB asli tidak disentuh),
-#   3. menjalankan server di port kosong,
-#   4. memanggil endpoint halaman Wallet lalu mencetak PASS/FAIL,
-#   5. mematikan server dan menyisakan log + DB salinan untuk diperiksa.
+# Dua mode:
+#
+#   1. Default (disarankan)
+#      Build ./cmd/api, jalankan di port kosong dengan SALINAN
+#      data/hotwallet.db, lalu panggil endpointnya. Kode yang diuji adalah
+#      kode di disk saat ini, dan DB asli tidak disentuh.
+#
+#   2. --url <base>
+#      Uji server yang SUDAH berjalan, mis. --url http://localhost:5009.
+#      Tidak build/start apa pun. Perhatian: endpoint refresh menulis saldo
+#      ke DB asli server tersebut (sama seperti watcher-nya), dan rotate
+#      ditolak di mode ini karena akan mengganti alamat wallet sungguhan.
 #
 # Pemakaian:
-#   scripts/check-wallet-endpoints.sh                 # hanya baca + estimasi + refresh
-#   scripts/check-wallet-endpoints.sh --mutate        # + rotate (hanya di DB salinan)
+#   scripts/check-wallet-endpoints.sh
+#   scripts/check-wallet-endpoints.sh --mutate          # + rotate (DB salinan)
+#   scripts/check-wallet-endpoints.sh --url http://localhost:5009
 #   CONFIRM_SEND=yes scripts/check-wallet-endpoints.sh --with-send
-#                                                     # + broadcast nyata (biaya gas!)
 #
-# --with-send mengirim nominal kecil dari wallet pertama di BNB Chain ke alamat
-# burn. Butuh CONFIRM_SEND=yes dan hanya dijalankan bila Anda benar-benar mau
-# membelanjakan saldo. Secara default tidak ada transaksi yang disiarkan.
+# --with-send menyiarkan transaksi nyata di BNB Chain (biaya gas). Butuh
+# CONFIRM_SEND=yes. Tanpa flag itu tidak ada transaksi yang dikirim.
 #
-# Endpoint default yang sengaja tidak diuji: /settings/rpc (masih 501),
-# PUT /wallets/{id}/address dan DELETE /wallets/{id} (butuh private key /
-# menghapus wallet; tidak dipakai halaman Wallet).
+# Tidak diuji secara default: /settings/rpc (masih 501),
+# PUT /wallets/{id}/address dan DELETE /wallets/{id}.
 #
 set -u
 
@@ -29,68 +33,100 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT" || exit 1
 
+usage() {
+  sed -n '/^# Cek seluruh/,/^set -u/p' "$0" | sed 's/^# \{0,1\}//;$d'
+}
+
 MUTATE=0
 WITH_SEND=0
-KEEP=0
-for arg in "$@"; do
-  case "$arg" in
-    --mutate)    MUTATE=1 ;;
-    --with-send) WITH_SEND=1 ;;
-    --keep)      KEEP=1 ;;
-    -h|--help)   sed -n '3,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "argumen tidak dikenal: $arg (lihat --help)" >&2; exit 2 ;;
+BASE_INPUT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --mutate)    MUTATE=1; shift ;;
+    --with-send) WITH_SEND=1; shift ;;
+    --url)
+      [ $# -ge 2 ] || { echo "--url butuh nilai, mis. --url http://localhost:5009" >&2; exit 2; }
+      BASE_INPUT="$2"; shift 2 ;;
+    --url=*)     BASE_INPUT="${1#--url=}"; shift ;;
+    -h|--help)   usage; exit 0 ;;
+    *) echo "argumen tidak dikenal: $1 (lihat --help)" >&2; exit 2 ;;
   esac
 done
 
-for bin in curl python3 go; do
+for bin in curl python3; do
   command -v "$bin" >/dev/null 2>&1 || { echo "butuh '$bin' di PATH" >&2; exit 2; }
 done
-[ -f data/hotwallet.db ] || { echo "data/hotwallet.db tidak ditemukan" >&2; exit 2; }
 
-WORK="${WORK:-$(mktemp -d "${TMPDIR:-/tmp}/hotwallet-check.XXXXXX")}"
-mkdir -p "$WORK/data"
-cp data/hotwallet.db "$WORK/hotwallet.db"
-rm -f "$WORK/hotwallet.db-shm" "$WORK/hotwallet.db-wal"
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/hotwallet-check.XXXXXX")"
+SERVER_PID=""
 
-pick_port() {
-  python3 - <<'PY'
+if [ -n "$BASE_INPUT" ]; then
+  REMOTE=1
+  BASE="${BASE_INPUT%/}"
+  case "$BASE" in
+    */api/v1) ;;
+    *) BASE="$BASE/api/v1" ;;
+  esac
+  echo "== mode --url: menguji server yang sudah berjalan =="
+  echo "   target: $BASE"
+  if ! curl -s --max-time 5 "$BASE/health" >/dev/null 2>&1; then
+    echo "tidak bisa menghubungi $BASE/health" >&2
+    echo "pastikan server berjalan dan --url menunjuk ke alamat yang benar" >&2
+    exit 1
+  fi
+else
+  REMOTE=0
+  command -v go >/dev/null 2>&1 || { echo "butuh 'go' di PATH" >&2; exit 2; }
+  [ -f data/hotwallet.db ] || { echo "data/hotwallet.db tidak ditemukan" >&2; exit 2; }
+
+  mkdir -p "$WORK/data"
+  cp data/hotwallet.db "$WORK/hotwallet.db"
+  rm -f "$WORK/hotwallet.db-shm" "$WORK/hotwallet.db-wal"
+
+  pick_port() {
+    python3 - <<'PY'
 import socket
 s = socket.socket()
 s.bind(("127.0.0.1", 0))
 print(s.getsockname()[1])
 s.close()
 PY
-}
-PORT="${PORT:-$(pick_port)}"
-BASE="http://127.0.0.1:$PORT/api/v1"
+  }
+  PORT="${PORT:-$(pick_port)}"
+  BASE="http://127.0.0.1:$PORT/api/v1"
 
-echo "== build =="
-if ! go build -o "$WORK/hotwallet-api" ./cmd/api; then
-  echo "build gagal" >&2
-  exit 1
+  echo "== build =="
+  if ! go build -o "$WORK/hotwallet-api" ./cmd/api; then
+    echo "build gagal" >&2
+    exit 1
+  fi
+
+  echo "== start server (port $PORT, db salinan) =="
+  PORT="$PORT" DB_PATH="$WORK/hotwallet.db" DATA_DIR="$WORK/data" \
+    "$WORK/hotwallet-api" >"$WORK/server.log" 2>&1 &
+  SERVER_PID=$!
 fi
 
-echo "== start server (port $PORT, db salinan) =="
-PORT="$PORT" DB_PATH="$WORK/hotwallet.db" DATA_DIR="$WORK/data" \
-  "$WORK/hotwallet-api" >"$WORK/server.log" 2>&1 &
-SERVER_PID=$!
-
 cleanup() {
-  kill "$SERVER_PID" 2>/dev/null
-  wait "$SERVER_PID" 2>/dev/null
+  if [ -n "$SERVER_PID" ]; then
+    kill "$SERVER_PID" 2>/dev/null
+    wait "$SERVER_PID" 2>/dev/null
+  fi
 }
 trap cleanup EXIT
 
-READY=0
-for _ in $(seq 1 60); do
-  if curl -s --max-time 1 "$BASE/health" >/dev/null 2>&1; then READY=1; break; fi
-  if ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi
-  sleep 0.25
-done
-if [ "$READY" -ne 1 ]; then
-  echo "server tidak siap; log terakhir:" >&2
-  tail -30 "$WORK/server.log" >&2
-  exit 1
+if [ "$REMOTE" -eq 0 ]; then
+  READY=0
+  for _ in $(seq 1 60); do
+    if curl -s --max-time 1 "$BASE/health" >/dev/null 2>&1; then READY=1; break; fi
+    if ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi
+    sleep 0.25
+  done
+  if [ "$READY" -ne 1 ]; then
+    echo "server tidak siap; log terakhir:" >&2
+    tail -30 "$WORK/server.log" >&2
+    exit 1
+  fi
 fi
 
 PASS=0
@@ -279,24 +315,29 @@ check POST /wallets/refresh 200
 
 if [ "$MUTATE" -eq 1 ]; then
   echo
-  echo "== mutate (hanya DB salinan) =="
-  rotate_id="$(wallet_id_for ethereum)"
-  [ -n "$rotate_id" ] || rotate_id="$(wallet_id_for solana)"
-  if [ -z "$rotate_id" ]; then
-    echo "FAIL  tidak ada wallet EVM/Solana untuk rotate"
-    FAIL=$((FAIL + 1))
-    FAILED+=("rotate: tidak ada wallet")
+  echo "== mutate =="
+  if [ "$REMOTE" -eq 1 ]; then
+    echo "SKIP  --mutate ditolak di mode --url (akan mengganti alamat wallet asli)."
+    echo "      Jalankan tanpa --url untuk menguji rotate di DB salinan."
   else
-    before="$(wallet_address "$rotate_id")"
-    check POST "/wallets/$rotate_id/rotate" 200
-    after="$(jget "$WORK/last.json" data.new_address)"
-    if [ -n "$after" ] && [ "$after" != "$before" ]; then
-      PASS=$((PASS + 1))
-      printf 'PASS  %-4s  %s\n' "-" "alamat berubah: $before -> $after (index $(jget "$WORK/last.json" data.derivation_index))"
-    else
+    rotate_id="$(wallet_id_for ethereum)"
+    [ -n "$rotate_id" ] || rotate_id="$(wallet_id_for solana)"
+    if [ -z "$rotate_id" ]; then
+      echo "FAIL  tidak ada wallet EVM/Solana untuk rotate"
       FAIL=$((FAIL + 1))
-      FAILED+=("rotate: alamat tidak berubah")
-      printf 'FAIL  %-4s  %s\n' "-" "alamat tidak berubah ($before)"
+      FAILED+=("rotate: tidak ada wallet")
+    else
+      before="$(wallet_address "$rotate_id")"
+      check POST "/wallets/$rotate_id/rotate" 200
+      after="$(jget "$WORK/last.json" data.new_address)"
+      if [ -n "$after" ] && [ "$after" != "$before" ]; then
+        PASS=$((PASS + 1))
+        printf 'PASS  %-4s  %s\n' "-" "alamat berubah: $before -> $after (index $(jget "$WORK/last.json" data.derivation_index))"
+      else
+        FAIL=$((FAIL + 1))
+        FAILED+=("rotate: alamat tidak berubah")
+        printf 'FAIL  %-4s  %s\n' "-" "alamat tidak berubah ($before)"
+      fi
     fi
   fi
 fi
@@ -306,6 +347,8 @@ if [ "$WITH_SEND" -eq 1 ]; then
   echo "== broadcast nyata (BNB Chain) =="
   if [ "${CONFIRM_SEND:-}" != "yes" ]; then
     echo "SKIP  butuh CONFIRM_SEND=yes untuk mengirim transaksi sungguhan"
+  elif [ "$REMOTE" -eq 1 ]; then
+    echo "SKIP  --with-send ditolak di mode --url (server tersebut memakai DB asli)."
   else
     send_id="$(wallet_id_for bsc)"
     if [ -z "$send_id" ]; then
@@ -340,9 +383,11 @@ if [ "$FAIL" -ne 0 ]; then
   printf 'Gagal:\n'
   for item in "${FAILED[@]}"; do printf '  - %s\n' "$item"; done
 fi
-echo "Log server : $WORK/server.log"
-echo "DB salinan : $WORK/hotwallet.db"
-if [ "$KEEP" -eq 0 ]; then
+if [ "$REMOTE" -eq 1 ]; then
+  echo "Target     : $BASE (server yang sudah berjalan)"
+else
+  echo "Log server : $WORK/server.log"
+  echo "DB salinan : $WORK/hotwallet.db"
   echo "(direktori $WORK disimpan untuk debugging; hapus manual bila tidak perlu)"
 fi
 

@@ -44,7 +44,16 @@ berjalan (build + port sementara + salinan DB, tanpa menyentuh DB asli):
 ./scripts/check-wallet-endpoints.sh            # baca + estimasi + refresh
 ./scripts/check-wallet-endpoints.sh --mutate   # + rotate (hanya di DB salinan)
 CONFIRM_SEND=yes ./scripts/check-wallet-endpoints.sh --with-send  # broadcast nyata
+
+# uji server yang sudah berjalan (mis. port 5009), tanpa build/start
+./scripts/check-wallet-endpoints.sh --url http://localhost:5009
 ```
+
+Mode default membangun `./cmd/api` dari kode saat ini dan menjalankannya di
+port sementara dengan salinan DB, jadi kode yang diuji selalu yang terbaru.
+Mode `--url` menembak server yang sudah hidup; rotate dan broadcast ditolak di
+mode ini karena DB-nya asli, tetapi endpoint `refresh` tetap menulis saldo ke
+DB server tersebut (sama seperti watcher-nya).
 
 Skrip mencetak PASS/FAIL per endpoint, ringkasan `ready n/5` dari
 `/wallets/diagnostics`, dan menyimpan log server di direktori sementara.
