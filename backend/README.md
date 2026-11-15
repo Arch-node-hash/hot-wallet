@@ -114,9 +114,22 @@ wallet) dan menyimpan setiap hasil pembacaan ke SQLite:
   mengizinkan request JSON-RPC lewat WS) untuk saldo awal dan refresh.
 
 Hasil ditulis ke `wallet_balances`, `wallets.balance` (native), dan
-`network_summaries`. Yang dipantau hanya **saldo native + USDT** per jaringan
-(Robinhood Chain belum punya kontrak USDT resmi, jadi native saja). Daftarnya
-ada di `internal/blockchain/tokenmeta/defaults.go` dan tabel `tokens`.
+`network_summaries`. Yang dipantau hanya **saldo native + satu stablecoin** per
+jaringan:
+
+| Jaringan | Native | Stablecoin |
+|---|---|---|
+| Ethereum Mainnet | ETH | USDT |
+| BNB Chain | BNB | USDT |
+| Arbitrum One | ETH | USDT |
+| Robinhood Chain | ETH | USDG |
+| Solana Mainnet | SOL | USDT |
+
+Robinhood Chain memakai **USDG** (Global Dollar) karena USDT/USDC belum punya
+kontrak resmi di rantai tersebut. Daftar token ada di
+`internal/blockchain/tokenmeta/defaults.go` dan tabel `tokens`; watcher membaca
+tabel itu, jadi menambah/menghapus baris di sana cukup untuk mengubah cakupan
+pemantauan.
 
 ## Private Keys untuk Wallet
 
@@ -233,7 +246,7 @@ Database dibuat otomatis di `data/hotwallet.db`. Tabel yang dipakai:
 | `wallets` | Wallet + saldo native terakhir |
 | `wallet_balances` | Saldo native & token per wallet/jaringan (hasil watcher) |
 | `network_summaries` | Ringkasan saldo per wallet/jaringan |
-| `tokens` | Metadata token yang dipantau (native + USDT) |
+| `tokens` | Metadata token stablecoin yang dipantau (USDT, USDG) |
 | `token_prices` | Harga token per jaringan (sumber nilai USD; diisi dari luar) |
 | `rpc_configs` | Endpoint RPC + WSS per jaringan |
 | `transactions` | Riwayat transaksi |
@@ -314,12 +327,12 @@ Halaman Wallet memakai metadata jaringan statis dari
 | `ethereum` | Ethereum Mainnet | ETH | ERC-20 | EVM Universal Address |
 | `bsc` | BNB Chain | BNB | BEP-20 | EVM Universal Address |
 | `arbitrum` | Arbitrum One | ARB | Arbitrum | EVM Universal Address |
-| `robinhood` | Robinhood Chain | ROBINHOOD | RH-20 | EVM Universal Address |
+| `robinhood` | Robinhood Chain | ETH | ERC-20 (RH-20) | EVM Universal Address |
 | `solana` | Solana Mainnet | SOL | SPL | Solana Mainnet Base58 Address |
 
 Nilai USD dihitung saat baca dari tabel `token_prices`. Stablecoin
-(USDT/USDC/DAI/BUSD/TUSD/FDUSD/USDe/USDD) selalu dihargai $1 bila belum ada
-baris harga. Native token bernilai 0 sampai `token_prices` diisi.
+(USDT/USDC/DAI/BUSD/TUSD/FDUSD/USDe/USDD/USDG) selalu dihargai $1 bila belum
+ada baris harga. Native token bernilai 0 sampai `token_prices` diisi.
 
 ### `GET /api/v1/wallets/overview` — tab ALL
 

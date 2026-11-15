@@ -25,6 +25,7 @@ import (
 var stablecoins = map[string]bool{
 	"USDT": true, "USDC": true, "DAI": true, "BUSD": true,
 	"TUSD": true, "FDUSD": true, "USDE": true, "USDD": true,
+	"USDG": true,
 }
 
 func canonical(name string) string { return network.Canonical(name) }
@@ -312,7 +313,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 		totalValue := 0.0
 		weighted := 0.0
 		seenNative := false
-		seenUSDT := false
+		seenTokens := make(map[string]bool)
 
 		for _, b := range balances {
 			price, change := idx.lookup(meta.Name, b.TokenAddress, b.TokenSymbol)
@@ -335,10 +336,11 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 			if b.TokenAddress == "" {
 				card.NativeBalance = b.Balance
 				seenNative = true
+			} else {
+				seenTokens[strings.ToLower(b.TokenAddress)] = true
 			}
 			if strings.EqualFold(b.TokenSymbol, "USDT") {
 				card.USDTBalance = b.Balance
-				seenUSDT = true
 			}
 
 			card.Tokens = append(card.Tokens, view)
@@ -356,15 +358,24 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 				IsNative: true,
 			})
 		}
-		if !seenUSDT {
-			address := tokenAddressBySymbol(tokens, meta.Name, "USDT")
+		// Token yang dipantau tapi belum punya baris saldo (mis. baru
+		// ditambahkan) tetap tampil dengan saldo 0. Robinhood memakai USDG,
+		// jaringan lain USDT, jadi placeholder mengikuti tabel tokens.
+		for _, t := range tokens {
+			if !strings.EqualFold(t.Network, meta.Name) {
+				continue
+			}
+			if seenTokens[strings.ToLower(t.Address)] {
+				continue
+			}
 			card.Tokens = append(card.Tokens, TokenBalanceView{
-				TokenAddress: address,
-				Symbol:       "USDT",
-				Decimals:     tokenDecimals(tokens, meta.Name, address, 6),
+				TokenAddress: t.Address,
+				Symbol:       t.Symbol,
+				Name:         t.Name,
+				Decimals:     t.Decimals,
 				Balance:      "0",
-				PriceUSD:     "1",
-				ValueUSD:     "0",
+				PriceUSD:     priceFor(idx, meta.Name, t.Address, t.Symbol),
+				ValueUSD:     "0.00",
 			})
 		}
 
@@ -1112,16 +1123,6 @@ func tokenName(tokens []store.TokenRow, networkName, tokenAddress string) string
 	for _, t := range tokens {
 		if canonical(t.Network) == key && strings.EqualFold(t.Address, tokenAddress) {
 			return t.Name
-		}
-	}
-	return ""
-}
-
-func tokenAddressBySymbol(tokens []store.TokenRow, networkName, symbol string) string {
-	key := canonical(networkName)
-	for _, t := range tokens {
-		if canonical(t.Network) == key && strings.EqualFold(t.Symbol, symbol) {
-			return t.Address
 		}
 	}
 	return ""
