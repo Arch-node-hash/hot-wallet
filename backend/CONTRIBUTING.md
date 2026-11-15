@@ -89,6 +89,8 @@ backend/
 │   ├── logger/             log.go
 │   ├── response/           json.go
 │   └── validator/          validator.go
+├── scripts/
+│   └── check-wallet-endpoints.sh   cek semua endpoint Wallet via server nyata
 ├── go.mod
 ├── go.sum
 └── .env

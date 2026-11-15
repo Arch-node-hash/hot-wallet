@@ -37,6 +37,20 @@ curl http://localhost:5009/
 curl http://localhost:5009/api/v1/health
 ```
 
+Untuk memeriksa seluruh endpoint halaman Wallet pada server yang benar-benar
+berjalan (build + port sementara + salinan DB, tanpa menyentuh DB asli):
+
+```bash
+./scripts/check-wallet-endpoints.sh            # baca + estimasi + refresh
+./scripts/check-wallet-endpoints.sh --mutate   # + rotate (hanya di DB salinan)
+CONFIRM_SEND=yes ./scripts/check-wallet-endpoints.sh --with-send  # broadcast nyata
+```
+
+Skrip mencetak PASS/FAIL per endpoint, ringkasan `ready n/5` dari
+`/wallets/diagnostics`, dan menyimpan log server di direktori sementara.
+Opsi `--with-send` mengirim nominal kecil di BNB Chain dan **membelanjakan
+gas**; tanpa flag itu tidak ada transaksi yang disiarkan.
+
 ## Diagnostics mainnet (read-only)
 
 Kesiapan jalur kirim tersedia sebagai endpoint di dalam server (bukan binary
@@ -179,6 +193,8 @@ backend/
 │   ├── logger/
 │   ├── response/
 │   └── validator/
+├── scripts/
+│   └── check-wallet-endpoints.sh  # Cek endpoint Wallet lewat server nyata
 ├── go.mod
 ├── go.sum
 ├── .env.example
@@ -559,6 +575,7 @@ backend/
 │   └── shared/
 │       ├── models/        # Data models
 │       └── interfaces/    # Service interfaces
+├── scripts/                # Skrip verifikasi endpoint
 └── data/                  # Database files
 ```
 
