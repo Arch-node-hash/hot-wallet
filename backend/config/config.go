@@ -59,7 +59,7 @@ func Load() Config {
 		"ethereum":  env("ETHEREUM_RPC", "https://ethereum-rpc.publicnode.com"),
 		"bsc":       env("BSC_RPC", "https://bsc-rpc.publicnode.com"),
 		"arbitrum":  env("ARBITRUM_RPC", "https://arbitrum-one-rpc.publicnode.com"),
-		"robinhood": env("ROBINHOOD_RPC", "https://rpc.mainnet.chain.robinhood.com"),
+		"robinhood": env("ROBINHOOD_RPC", "https://robinhood-rpc.publicnode.com"),
 		"solana":    env("SOLANA_RPC", ""),
 		"polygon":   env("POLYGON_RPC", "https://polygon-rpc.com"),
 	}
