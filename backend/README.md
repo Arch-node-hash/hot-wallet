@@ -92,6 +92,8 @@ Semua lewat environment variable (atau file `backend/.env`):
 | `WS_WATCHER_ENABLED` | `true`    | Nyalakan watcher saldo real-time    |
 | `WS_DEBOUNCE` | `4s`             | Jarak minimum refresh per blok (EVM) |
 | `WS_REFRESH` | `30s`             | Refresh periodik cadangan           |
+| `FX_API_URL` | `https://open.er-api.com/v6/latest/USD` | Sumber kurs USD → IDR |
+| `FX_REFRESH` | `30m`             | Interval pengambilan kurs USD → IDR |
 | `ETH_PRIVATE_KEY` | *(wajib diisi)* | Private key Ethereum (64 hex characters dengan 0x prefix) |
 | `SOLANA_PRIVATE_KEY` | *(wajib diisi)* | Private key Solana (base58 encoded) |
 
@@ -114,7 +116,8 @@ wallet) dan menyimpan setiap hasil pembacaan ke SQLite:
   mengizinkan request JSON-RPC lewat WS) untuk saldo awal dan refresh.
 
 Hasil ditulis ke `wallet_balances`, `wallets.balance` (native), dan
-`network_summaries`. Yang dipantau hanya **saldo native + satu stablecoin** per
+`network_summaries`, lengkap dengan `value_usd` (dari `token_prices`, stablecoin
+fallback $1) dan `value_idr` (dari kurs USD → IDR di tabel `fx_rates`). Yang dipantau hanya **saldo native + satu stablecoin** per
 jaringan:
 
 | Jaringan | Native | Stablecoin |
@@ -244,10 +247,11 @@ Database dibuat otomatis di `data/hotwallet.db`. Tabel yang dipakai:
 | Tabel | Keterangan |
 |---|---|
 | `wallets` | Wallet + saldo native terakhir |
-| `wallet_balances` | Saldo native & token per wallet/jaringan (hasil watcher) |
-| `network_summaries` | Ringkasan saldo per wallet/jaringan |
+| `wallet_balances` | Saldo native & token per wallet/jaringan + `value_usd`, `value_idr` |
+| `network_summaries` | Ringkasan saldo per wallet/jaringan + `total_value_usd`, `total_value_idr` |
 | `tokens` | Metadata token stablecoin yang dipantau (USDT, USDG) |
 | `token_prices` | Harga token per jaringan (sumber nilai USD; diisi dari luar) |
+| `fx_rates` | Kurs USD → IDR + sumber & waktu ambil terakhir |
 | `rpc_configs` | Endpoint RPC + WSS per jaringan |
 | `transactions` | Riwayat transaksi |
 | `contacts` | Kontak alamat wallet |
@@ -330,9 +334,16 @@ Halaman Wallet memakai metadata jaringan statis dari
 | `robinhood` | Robinhood Chain | ETH | ERC-20 (RH-20) | EVM Universal Address |
 | `solana` | Solana Mainnet | SOL | SPL | Solana Mainnet Base58 Address |
 
-Nilai USD dihitung saat baca dari tabel `token_prices`. Stablecoin
+Nilai USD dihitung dari tabel `token_prices`. Stablecoin
 (USDT/USDC/DAI/BUSD/TUSD/FDUSD/USDe/USDD/USDG) selalu dihargai $1 bila belum
 ada baris harga. Native token bernilai 0 sampai `token_prices` diisi.
+
+Nilai IDR = nilai USD × kurs USD → IDR. Kurs **diambil dari penyedia publik**
+(`FX_API_URL`, default `open.er-api.com`), disimpan di `fx_rates`, dan
+diperbarui tiap `FX_REFRESH` (default 30 menit), jadi rupiah ikut menguat atau
+melemah tanpa rebuild. Bila pengambilan gagal, kurs terakhir di database tetap
+dipakai. Saat kurs berubah, `value_idr` semua saldo dan `total_value_idr`
+ringkasan dihitung ulang otomatis.
 
 ### `GET /api/v1/wallets/overview` — tab ALL
 
@@ -345,8 +356,11 @@ curl http://localhost:5009/api/v1/wallets/overview
   "success": true,
   "data": {
     "total_value_usd": "9000.00",
+    "total_value_idr": "164000000.00",
     "change_24h_usd": "100.00",
     "change_24h_percent": 1.11,
+    "usd_idr_rate": "18221.88",
+    "fx_updated_at": "2026-01-01T00:00:00Z",
     "refreshed_at": "2026-01-01T00:00:00Z",
     "networks": [
       {
@@ -364,13 +378,16 @@ curl http://localhost:5009/api/v1/wallets/overview
         "native_balance": "2",
         "usdt_balance": "1000",
         "total_value_usd": "7000.00",
+        "total_value_idr": "127553160.00",
         "change_24h_percent": 1.71,
         "has_wallet": true,
         "tokens": [
           { "token_address": "", "symbol": "ETH", "decimals": 18, "balance": "2",
-            "price_usd": "3000", "value_usd": "6000.00", "change_24h": 2, "is_native": true },
+            "price_usd": "3000", "value_usd": "6000.00", "value_idr": "109331280.00",
+            "change_24h": 2, "is_native": true },
           { "token_address": "0xdAC1...ec7", "symbol": "USDT", "decimals": 6, "balance": "1000",
-            "price_usd": "1", "value_usd": "1000.00", "change_24h": 0, "is_native": false }
+            "price_usd": "1", "value_usd": "1000.00", "value_idr": "18221880.00",
+            "change_24h": 0, "is_native": false }
         ]
       }
     ]

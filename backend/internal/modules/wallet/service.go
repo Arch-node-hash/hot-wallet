@@ -7,6 +7,7 @@ import (
 
 	"hotwallet/backend/config"
 	"hotwallet/backend/internal/blockchain/network"
+	"hotwallet/backend/internal/blockchain/pricing"
 	"hotwallet/backend/internal/blockchain/wallet"
 	"hotwallet/backend/internal/infrastructure/store"
 )
@@ -78,10 +79,12 @@ func (s *Service) GetWallet(ctx context.Context, id string) (*WalletDetailRespon
 
 	meta, _ := network.MetaFor(row.Network)
 	total := "0"
+	totalIDR := "0"
 	native := "0"
 	usdt := "0"
 	for _, item := range items {
 		total = addUSD(total, item.ValueUSD)
+		totalIDR = addUSD(totalIDR, item.ValueIDR)
 		if item.IsNative {
 			native = item.Balance
 		}
@@ -103,6 +106,7 @@ func (s *Service) GetWallet(ctx context.Context, id string) (*WalletDetailRespon
 		NativeBalance:   native,
 		USDTBalance:     usdt,
 		TotalValueUSD:   total,
+		TotalValueIDR:   totalIDR,
 		DerivationPath:  row.DerivationPath,
 		Balance:         row.Balance,
 		NetworkBalances: map[string][]BalanceItem{row.Network: items},
@@ -127,12 +131,16 @@ func (s *Service) balanceItems(ctx context.Context, row store.WalletRow) ([]Bala
 		return nil, err
 	}
 
-	idx := newPriceIndex(prices)
+	idx := pricing.New(prices)
+	fxRate, err := s.store.GetFXRate(ctx, "USD", "IDR")
+	if err != nil {
+		return nil, err
+	}
 	meta, _ := network.MetaFor(row.Network)
 
 	items := make([]BalanceItem, 0, len(balances))
 	for _, b := range balances {
-		price, change := idx.lookup(row.Network, b.TokenAddress, b.TokenSymbol)
+		price, change := idx.Lookup(row.Network, b.TokenAddress, b.TokenSymbol)
 		items = append(items, BalanceItem{
 			TokenAddress: b.TokenAddress,
 			TokenSymbol:  b.TokenSymbol,
@@ -141,6 +149,7 @@ func (s *Service) balanceItems(ctx context.Context, row store.WalletRow) ([]Bala
 			Balance:      b.Balance,
 			PriceUSD:     price,
 			ValueUSD:     mulUSD(b.Balance, price),
+			ValueIDR:     mulUSD(mulUSD(b.Balance, price), fxRate.Rate),
 			Change24h:    change,
 			IsNative:     b.TokenAddress == "",
 		})

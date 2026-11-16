@@ -112,6 +112,7 @@ type WalletDetailResponse struct {
 	NativeBalance   string                   `json:"native_balance,omitempty"`
 	USDTBalance     string                   `json:"usdt_balance,omitempty"`
 	TotalValueUSD   string                   `json:"total_value_usd"`
+	TotalValueIDR   string                   `json:"total_value_idr"`
 	DerivationPath  string                   `json:"derivation_path"`
 	Balance         string                   `json:"balance"`
 	NetworkBalances map[string][]BalanceItem `json:"network_balances"`
@@ -127,6 +128,7 @@ type BalanceItem struct {
 	Balance      string  `json:"balance"`
 	PriceUSD     string  `json:"price_usd"`
 	ValueUSD     string  `json:"value_usd"`
+	ValueIDR     string  `json:"value_idr"`
 	Change24h    float64 `json:"change_24h"`
 	IsNative     bool    `json:"is_native"`
 }
@@ -144,6 +146,7 @@ type TokenBalanceView struct {
 	Balance      string  `json:"balance"`
 	PriceUSD     string  `json:"price_usd"`
 	ValueUSD     string  `json:"value_usd"`
+	ValueIDR     string  `json:"value_idr"`
 	Change24h    float64 `json:"change_24h"`
 	IsNative     bool    `json:"is_native"`
 }
@@ -164,6 +167,7 @@ type NetworkCard struct {
 	NativeBalance string             `json:"native_balance"`
 	USDTBalance   string             `json:"usdt_balance"`
 	TotalValueUSD string             `json:"total_value_usd"`
+	TotalValueIDR string             `json:"total_value_idr"`
 	Change24h     float64            `json:"change_24h_percent"`
 	HasWallet     bool               `json:"has_wallet"`
 	Tokens        []TokenBalanceView `json:"tokens"`
@@ -172,8 +176,11 @@ type NetworkCard struct {
 // OverviewResponse adalah payload tab ALL.
 type OverviewResponse struct {
 	TotalValueUSD    string        `json:"total_value_usd"`
+	TotalValueIDR    string        `json:"total_value_idr"`
 	Change24hUSD     string        `json:"change_24h_usd"`
 	Change24hPercent float64       `json:"change_24h_percent"`
+	USDIDRRate       string        `json:"usd_idr_rate"`
+	FXUpdatedAt      string        `json:"fx_updated_at,omitempty"`
 	RefreshedAt      string        `json:"refreshed_at"`
 	Networks         []NetworkCard `json:"networks"`
 }

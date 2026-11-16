@@ -16,68 +16,13 @@ import (
 
 	"hotwallet/backend/internal/blockchain/evm"
 	"hotwallet/backend/internal/blockchain/network"
+	"hotwallet/backend/internal/blockchain/pricing"
 	"hotwallet/backend/internal/blockchain/solana"
 	"hotwallet/backend/internal/blockchain/wallet"
 	"hotwallet/backend/internal/infrastructure/store"
 )
 
-// stablecoins selalu dihargai $1 walau tabel token_prices kosong.
-var stablecoins = map[string]bool{
-	"USDT": true, "USDC": true, "DAI": true, "BUSD": true,
-	"TUSD": true, "FDUSD": true, "USDE": true, "USDD": true,
-	"USDG": true,
-}
-
 func canonical(name string) string { return network.Canonical(name) }
-
-func isStablecoin(symbol string) bool {
-	return stablecoins[strings.ToUpper(strings.TrimSpace(symbol))]
-}
-
-// ---------------------------------------------------------------------------
-// Index harga & metadata token
-// ---------------------------------------------------------------------------
-
-type priceIndex struct {
-	byAddress map[string]store.TokenPrice
-	bySymbol  map[string]store.TokenPrice
-}
-
-func newPriceIndex(prices []store.TokenPrice) *priceIndex {
-	idx := &priceIndex{
-		byAddress: make(map[string]store.TokenPrice),
-		bySymbol:  make(map[string]store.TokenPrice),
-	}
-	for _, p := range prices {
-		key := canonical(p.Network)
-		idx.byAddress[key+"\x00"+strings.ToLower(p.TokenAddress)] = p
-		idx.bySymbol[key+"\x00"+strings.ToUpper(p.Symbol)] = p
-	}
-	return idx
-}
-
-// lookup mencari harga token: cocok alamat dulu, lalu simbol, lalu fallback
-// stablecoin $1.
-func (idx *priceIndex) lookup(networkName, tokenAddress, symbol string) (string, float64) {
-	key := canonical(networkName)
-	if p, ok := idx.byAddress[key+"\x00"+strings.ToLower(tokenAddress)]; ok {
-		return normalizePrice(p.PriceUSD), p.Change24h
-	}
-	if p, ok := idx.bySymbol[key+"\x00"+strings.ToUpper(symbol)]; ok {
-		return normalizePrice(p.PriceUSD), p.Change24h
-	}
-	if isStablecoin(symbol) {
-		return "1", 0
-	}
-	return "0", 0
-}
-
-func normalizePrice(price string) string {
-	if strings.TrimSpace(price) == "" {
-		return "0"
-	}
-	return price
-}
 
 // ---------------------------------------------------------------------------
 // Service: overview / addresses / networks
@@ -92,11 +37,18 @@ func (s *Service) Overview(ctx context.Context) (*OverviewResponse, error) {
 	}
 
 	total := "0"
+	totalIDR := "0"
 	weighted := 0.0
 	for _, card := range cards {
 		value := toFloat(card.TotalValueUSD)
 		total = addUSD(total, card.TotalValueUSD)
+		totalIDR = addUSD(totalIDR, card.TotalValueIDR)
 		weighted += value * card.Change24h
+	}
+
+	fxRate, err := s.store.GetFXRate(ctx, "USD", "IDR")
+	if err != nil {
+		return nil, err
 	}
 
 	totalFloat := toFloat(total)
@@ -108,8 +60,11 @@ func (s *Service) Overview(ctx context.Context) (*OverviewResponse, error) {
 
 	return &OverviewResponse{
 		TotalValueUSD:    total,
+		TotalValueIDR:    totalIDR,
 		Change24hUSD:     changeUSD,
 		Change24hPercent: round2(percent),
+		USDIDRRate:       fxRate.Rate,
+		FXUpdatedAt:      fxRate.UpdatedAt,
 		RefreshedAt:      nowRFC3339(),
 		Networks:         cards,
 	}, nil
@@ -129,7 +84,14 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 		return nil, err
 	}
 
-	idx := newPriceIndex(prices)
+	idx := pricing.New(prices)
+	// Kurs terbaru dari fx_rates (diisi berkala oleh manager fx). Bila belum
+	// ada, nilai IDR menjadi 0 tanpa membuat request gagal.
+	fxRate, err := s.store.GetFXRate(ctx, "USD", "IDR")
+	if err != nil {
+		return nil, err
+	}
+
 	byNetwork := make(map[string]store.WalletRow)
 	for _, w := range wallets {
 		if key := canonical(w.Network); key != "" {
@@ -151,6 +113,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 			NativeBalance: "0",
 			USDTBalance:   "0",
 			TotalValueUSD: "0.00",
+			TotalValueIDR: "0.00",
 			Tokens:        []TokenBalanceView{},
 		}
 
@@ -171,13 +134,15 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 		}
 
 		totalValue := 0.0
+		totalIDR := 0.0
 		weighted := 0.0
 		seenNative := false
 		seenTokens := make(map[string]bool)
 
 		for _, b := range balances {
-			price, change := idx.lookup(meta.Name, b.TokenAddress, b.TokenSymbol)
+			price, change := idx.Lookup(meta.Name, b.TokenAddress, b.TokenSymbol)
 			value := mulUSD(b.Balance, price)
+			valueIDR := mulUSD(value, fxRate.Rate)
 
 			view := TokenBalanceView{
 				TokenAddress: b.TokenAddress,
@@ -186,6 +151,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 				Balance:      b.Balance,
 				PriceUSD:     price,
 				ValueUSD:     value,
+				ValueIDR:     valueIDR,
 				Change24h:    change,
 				IsNative:     b.TokenAddress == "",
 			}
@@ -205,6 +171,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 
 			card.Tokens = append(card.Tokens, view)
 			totalValue += toFloat(value)
+			totalIDR += toFloat(valueIDR)
 			weighted += toFloat(value) * change
 		}
 
@@ -213,8 +180,9 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 				Symbol:   meta.NativeSymbol,
 				Decimals: int(meta.NativeDecimals),
 				Balance:  "0",
-				PriceUSD: priceFor(idx, meta.Name, "", meta.NativeSymbol),
+				PriceUSD: idx.Price(meta.Name, "", meta.NativeSymbol),
 				ValueUSD: "0",
+				ValueIDR: "0",
 				IsNative: true,
 			})
 		}
@@ -234,14 +202,16 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 				Name:         t.Name,
 				Decimals:     t.Decimals,
 				Balance:      "0",
-				PriceUSD:     priceFor(idx, meta.Name, t.Address, t.Symbol),
+				PriceUSD:     idx.Price(meta.Name, t.Address, t.Symbol),
 				ValueUSD:     "0.00",
+				ValueIDR:     "0.00",
 			})
 		}
 
 		sortTokenViews(card.Tokens)
 
 		card.TotalValueUSD = format2(totalValue)
+		card.TotalValueIDR = format2(totalIDR)
 		if totalValue > 0 {
 			card.Change24h = round2(weighted / totalValue)
 		}
@@ -499,7 +469,7 @@ func (s *Service) refreshWallet(ctx context.Context, row store.WalletRow) error 
 	if err != nil {
 		return err
 	}
-	idx := newPriceIndex(prices)
+	idx := pricing.New(prices)
 
 	var rows []store.BalanceRow
 
@@ -574,7 +544,7 @@ func (s *Service) refreshWallet(ctx context.Context, row store.WalletRow) error 
 	}
 
 	for i := range rows {
-		price, _ := idx.lookup(meta.Name, rows[i].TokenAddress, rows[i].TokenSymbol)
+		price, _ := idx.Lookup(meta.Name, rows[i].TokenAddress, rows[i].TokenSymbol)
 		rows[i].ValueUSD = mulUSD(rows[i].Balance, price)
 	}
 	return s.store.UpsertBalances(ctx, rows)
@@ -617,8 +587,8 @@ func (s *Service) SendEstimate(ctx context.Context, id string, req SendEstimateR
 	}
 
 	prices, _ := s.store.ListTokenPrices(ctx)
-	idx := newPriceIndex(prices)
-	nativePrice, _ := idx.lookup(meta.Name, "", meta.NativeSymbol)
+	idx := pricing.New(prices)
+	nativePrice, _ := idx.Lookup(meta.Name, "", meta.NativeSymbol)
 
 	resp := &SendEstimateResponse{
 		Network:      meta.Name,
@@ -629,7 +599,7 @@ func (s *Service) SendEstimate(ctx context.Context, id string, req SendEstimateR
 		NativeSymbol: meta.NativeSymbol,
 		FeeNative:    "0",
 		FeeUSD:       "0",
-		TotalUSD:     mulUSD(req.Amount, priceFor(idx, meta.Name, token.address, token.symbol)),
+		TotalUSD:     mulUSD(req.Amount, idx.Price(meta.Name, token.address, token.symbol)),
 	}
 
 	if meta.Chain == network.ChainSolana {
@@ -986,11 +956,6 @@ func tokenName(tokens []store.TokenRow, networkName, tokenAddress string) string
 		}
 	}
 	return ""
-}
-
-func priceFor(idx *priceIndex, networkName, tokenAddress, symbol string) string {
-	price, _ := idx.lookup(networkName, tokenAddress, symbol)
-	return price
 }
 
 func sortTokenViews(views []TokenBalanceView) {

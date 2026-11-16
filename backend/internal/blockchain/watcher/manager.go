@@ -9,6 +9,7 @@ import (
 
 	"hotwallet/backend/internal/blockchain/evm"
 	"hotwallet/backend/internal/blockchain/network"
+	"hotwallet/backend/internal/blockchain/pricing"
 	"hotwallet/backend/internal/blockchain/solana"
 	"hotwallet/backend/internal/infrastructure/store"
 )
@@ -30,6 +31,7 @@ type Manager struct {
 	targets    []store.WalletTarget
 	tokens     []store.TokenRow
 	rpcConfigs map[string]store.RPCConfig
+	prices     *pricing.Index
 
 	defs   map[string]network.Network
 	active map[string]context.CancelFunc
@@ -58,6 +60,7 @@ func NewManager(st *store.Store, cfg Config) *Manager {
 	return &Manager{
 		store:      st,
 		cfg:        cfg,
+		prices:     pricing.New(nil),
 		rpcConfigs: make(map[string]store.RPCConfig),
 		defs:       defs,
 		active:     make(map[string]context.CancelFunc),
@@ -117,10 +120,19 @@ func (m *Manager) reload() {
 		byKey[key] = config
 	}
 
+	// Harga token dipakai untuk mengisi value_usd/value_idr saat menulis
+	// saldo. Tabel harga boleh kosong; stablecoin tetap $1.
+	prices, err := m.store.ListTokenPrices(context.Background())
+	if err != nil {
+		m.logf("watcher: baca harga token: %v", err)
+	}
+	index := pricing.New(prices)
+
 	m.mu.Lock()
 	m.targets = targets
 	m.tokens = tokens
 	m.rpcConfigs = byKey
+	m.prices = index
 	m.mu.Unlock()
 }
 
@@ -302,6 +314,18 @@ func (m *Manager) persistSolana(ctx context.Context, balances []solana.Balance) 
 func (m *Manager) persist(ctx context.Context, rows []store.BalanceRow) error {
 	if len(rows) == 0 {
 		return nil
+	}
+
+	// Isi nilai USD di sini supaya kolom value_usd/value_idr di database
+	// tidak tertimpa nol setiap kali watcher menulis saldo baru.
+	m.mu.RLock()
+	index := m.prices
+	m.mu.RUnlock()
+	if index != nil {
+		for i := range rows {
+			price, _ := index.Lookup(rows[i].Network, rows[i].TokenAddress, rows[i].TokenSymbol)
+			rows[i].ValueUSD = pricing.Value(rows[i].Balance, price)
+		}
 	}
 	// Tulis tetap selesai walau koneksi WS sedang reconnect.
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)

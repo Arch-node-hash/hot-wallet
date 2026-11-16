@@ -62,6 +62,7 @@ func createWalletTables(db *sql.DB) error {
 			token_symbol TEXT NOT NULL,
 			balance TEXT NOT NULL,
 			value_usd TEXT DEFAULT '0',
+			value_idr TEXT DEFAULT '0',
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (wallet_id, network, token_address),
 			FOREIGN KEY (wallet_id) REFERENCES wallets(id) ON DELETE CASCADE
@@ -72,6 +73,7 @@ func createWalletTables(db *sql.DB) error {
 			network TEXT NOT NULL,
 			total_balance TEXT DEFAULT '0',
 			total_value_usd TEXT DEFAULT '0',
+			total_value_idr TEXT DEFAULT '0',
 			token_count INTEGER DEFAULT 0,
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (wallet_id, network),
@@ -237,6 +239,17 @@ func createTokenTables(db *sql.DB) error {
 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (network, token_address)
 		)`,
+
+		// Kurs mata uang (mis. USD -> IDR) dengan cap waktu. Diisi berkala
+		// dari penyedia kurs publik, lalu dipakai untuk nilai IDR.
+		`CREATE TABLE IF NOT EXISTS fx_rates (
+			base TEXT NOT NULL,
+			quote TEXT NOT NULL,
+			rate TEXT NOT NULL,
+			source TEXT,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (base, quote)
+		)`,
 	}
 
 	if err := executeStatements(db, statements); err != nil {
@@ -249,6 +262,14 @@ func createTokenTables(db *sql.DB) error {
 		return err
 	}
 	if err := ensureColumn(db, "wallets", "derivation_index", "INTEGER DEFAULT 0"); err != nil {
+		return err
+	}
+	// Nilai IDR disimpan di samping nilai USD supaya bisa dibaca langsung
+	// dari database (mis. ekspor/laporan), bukan hanya dari response API.
+	if err := ensureColumn(db, "wallet_balances", "value_idr", "TEXT DEFAULT '0'"); err != nil {
+		return err
+	}
+	if err := ensureColumn(db, "network_summaries", "total_value_idr", "TEXT DEFAULT '0'"); err != nil {
 		return err
 	}
 	return nil

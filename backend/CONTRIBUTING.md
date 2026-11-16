@@ -102,7 +102,7 @@ backend/
 
 | Domain | Model utama | Tabel | Route |
 |---|---|---|---|
-| `wallet` | `Wallet`, `WalletBalance`, `NetworkSummary`, seluruh DTO di `model.go` | `wallets`, `wallet_balances`, `network_summaries`, `token_prices` | `/api/v1/wallets` |
+| `wallet` | `Wallet`, `WalletBalance`, `NetworkSummary`, seluruh DTO di `model.go` | `wallets`, `wallet_balances`, `network_summaries`, `tokens`, `token_prices`, `fx_rates` | `/api/v1/wallets` |
 | `portfolio` | `PortfolioSummary`, `PortfolioToken`, `NetworkAsset` | `portfolio_summary`, `portfolio_tokens`, `network_assets` | `/api/v1/portfolio` |
 | `transaction` | `Transaction` | `transactions` | `/api/v1/transactions` |
 | `contact` | `Contact` | `contacts` | `/api/v1/contacts` |

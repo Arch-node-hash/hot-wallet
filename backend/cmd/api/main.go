@@ -12,6 +12,7 @@ import (
 	"hotwallet/backend/internal/blockchain/tokenmeta"
 	"hotwallet/backend/internal/blockchain/wallet"
 	"hotwallet/backend/internal/blockchain/watcher"
+	"hotwallet/backend/internal/infrastructure/fx"
 	"hotwallet/backend/internal/infrastructure/router"
 	"hotwallet/backend/internal/infrastructure/store"
 )
@@ -76,6 +77,14 @@ func main() {
 			}
 		}()
 	}
+
+	// Kurs USD -> IDR: diambil saat start lalu berkala, disimpan di
+	// fx_rates, dan dipakai untuk mengisi value_idr/total_value_idr.
+	fxManager := fx.NewManager(st, fx.Config{
+		URL:      cfg.FXAPIURL,
+		Interval: cfg.FXRefresh,
+	})
+	go fxManager.Run(ctx)
 
 	log.Printf("HotWallet API listening on http://localhost:%s", cfg.Port)
 	log.Printf("  root    : %s", cfg.Root)

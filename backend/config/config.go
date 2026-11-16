@@ -37,6 +37,11 @@ type Config struct {
 	WSWatcherEnabled bool
 	WSDebounce       time.Duration
 	WSRefresh        time.Duration
+
+	// Kurs mata uang (USD -> IDR). Sumbernya penyedia publik, bukan
+	// hardcode, supaya nilai IDR mengikuti kurs berjalan.
+	FXAPIURL  string
+	FXRefresh time.Duration
 }
 
 func Load() Config {
@@ -90,6 +95,8 @@ func Load() Config {
 		WSWatcherEnabled: env("WS_WATCHER_ENABLED", "true") == "true",
 		WSDebounce:       envDuration("WS_DEBOUNCE", 4*time.Second),
 		WSRefresh:        envDuration("WS_REFRESH", 30*time.Second),
+		FXAPIURL:         env("FX_API_URL", "https://open.er-api.com/v6/latest/USD"),
+		FXRefresh:        envDuration("FX_REFRESH", 30*time.Minute),
 	}
 }
 

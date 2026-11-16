@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -31,6 +32,7 @@ type BalanceRow struct {
 	TokenSymbol  string
 	Balance      string
 	ValueUSD     string
+	ValueIDR     string
 }
 
 // ListWalletTargets mengambil wallet yang punya alamat dan jaringan.
@@ -119,6 +121,16 @@ func (s *Store) UpsertBalances(ctx context.Context, rows []BalanceRow) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	touched := make(map[string]struct{})
 
+	// Kurs dipakai untuk mengisi value_idr tanpa perlu setiap pemanggil
+	// (watcher, refresh manual) membaca tabel fx_rates sendiri.
+	var rate string
+	err = tx.QueryRowContext(ctx, `
+		SELECT COALESCE(rate, '0') FROM fx_rates WHERE base = 'USD' AND quote = 'IDR'
+	`).Scan(&rate)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("store: baca kurs: %w", err)
+	}
+
 	for _, row := range rows {
 		if row.WalletID == "" || row.Network == "" {
 			continue
@@ -128,17 +140,22 @@ func (s *Store) UpsertBalances(ctx context.Context, rows []BalanceRow) error {
 		if valueUSD == "" {
 			valueUSD = "0"
 		}
+		valueIDR := row.ValueIDR
+		if valueIDR == "" {
+			valueIDR = mulDecimal(valueUSD, rate)
+		}
 
 		_, err := tx.Exec(`
 			INSERT INTO wallet_balances
-				(wallet_id, network, token_address, token_symbol, balance, value_usd, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?)
+				(wallet_id, network, token_address, token_symbol, balance, value_usd, value_idr, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(wallet_id, network, token_address) DO UPDATE SET
 				token_symbol = excluded.token_symbol,
 				balance = excluded.balance,
 				value_usd = excluded.value_usd,
+				value_idr = excluded.value_idr,
 				updated_at = excluded.updated_at
-		`, row.WalletID, row.Network, row.TokenAddress, row.TokenSymbol, row.Balance, valueUSD, now)
+		`, row.WalletID, row.Network, row.TokenAddress, row.TokenSymbol, row.Balance, valueUSD, valueIDR, now)
 		if err != nil {
 			return fmt.Errorf("store: upsert balance %s %s: %w", row.WalletID, row.Network, err)
 		}
@@ -179,16 +196,26 @@ func (s *Store) UpsertBalances(ctx context.Context, rows []BalanceRow) error {
 			return fmt.Errorf("store: count balances %s: %w", walletID, err)
 		}
 
+		totalUSD, err := sumColumn(ctx, tx, "value_usd", walletID, network)
+		if err != nil {
+			return err
+		}
+		totalIDR, err := sumColumn(ctx, tx, "value_idr", walletID, network)
+		if err != nil {
+			return err
+		}
+
 		_, err = tx.Exec(`
 			INSERT INTO network_summaries
-				(wallet_id, network, total_balance, total_value_usd, token_count, updated_at)
-			VALUES (?, ?, ?, '0', ?, ?)
+				(wallet_id, network, total_balance, total_value_usd, total_value_idr, token_count, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(wallet_id, network) DO UPDATE SET
 				total_balance = excluded.total_balance,
 				total_value_usd = excluded.total_value_usd,
+				total_value_idr = excluded.total_value_idr,
 				token_count = excluded.token_count,
 				updated_at = excluded.updated_at
-		`, walletID, network, native, tokenCount, now)
+		`, walletID, network, native, totalUSD, totalIDR, tokenCount, now)
 		if err != nil {
 			return fmt.Errorf("store: upsert summary %s: %w", walletID, err)
 		}
@@ -200,10 +227,35 @@ func (s *Store) UpsertBalances(ctx context.Context, rows []BalanceRow) error {
 	return nil
 }
 
+// sumColumn menjumlahkan kolom nilai (value_usd/value_idr) satu wallet dan
+// jaringan memakai desimal, bukan REAL, supaya tidak ada galat pembulatan.
+func sumColumn(ctx context.Context, tx *sql.Tx, column, walletID, network string) (string, error) {
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf(`
+		SELECT COALESCE(%s, '0') FROM wallet_balances WHERE wallet_id = ? AND network = ?
+	`, column), walletID, network)
+	if err != nil {
+		return "0", fmt.Errorf("store: sum %s: %w", column, err)
+	}
+	defer rows.Close()
+
+	total := "0"
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return "0", fmt.Errorf("store: scan sum %s: %w", column, err)
+		}
+		total = addDecimal(total, value)
+	}
+	if err := rows.Err(); err != nil {
+		return "0", fmt.Errorf("store: rows sum %s: %w", column, err)
+	}
+	return total, nil
+}
+
 // GetWalletBalances membaca saldo tersimpan untuk satu wallet.
 func (s *Store) GetWalletBalances(ctx context.Context, walletID string) ([]BalanceRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT wallet_id, network, COALESCE(token_address, ''), token_symbol, balance, value_usd
+		SELECT wallet_id, network, COALESCE(token_address, ''), token_symbol, balance, value_usd, value_idr
 		FROM wallet_balances
 		WHERE wallet_id = ?
 		ORDER BY network, token_symbol
@@ -216,7 +268,7 @@ func (s *Store) GetWalletBalances(ctx context.Context, walletID string) ([]Balan
 	var result []BalanceRow
 	for rows.Next() {
 		var row BalanceRow
-		if err := rows.Scan(&row.WalletID, &row.Network, &row.TokenAddress, &row.TokenSymbol, &row.Balance, &row.ValueUSD); err != nil {
+		if err := rows.Scan(&row.WalletID, &row.Network, &row.TokenAddress, &row.TokenSymbol, &row.Balance, &row.ValueUSD, &row.ValueIDR); err != nil {
 			return nil, fmt.Errorf("store: scan balance: %w", err)
 		}
 		result = append(result, row)
