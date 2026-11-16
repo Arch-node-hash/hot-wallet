@@ -113,6 +113,7 @@ type WalletDetailResponse struct {
 	USDTBalance     string                   `json:"usdt_balance,omitempty"`
 	TotalValueUSD   string                   `json:"total_value_usd"`
 	TotalValueIDR   string                   `json:"total_value_idr"`
+	DataUpdatedAt   string                   `json:"data_updated_at,omitempty"`
 	DerivationPath  string                   `json:"derivation_path"`
 	Balance         string                   `json:"balance"`
 	NetworkBalances map[string][]BalanceItem `json:"network_balances"`
@@ -129,6 +130,7 @@ type BalanceItem struct {
 	PriceUSD     string  `json:"price_usd"`
 	ValueUSD     string  `json:"value_usd"`
 	ValueIDR     string  `json:"value_idr"`
+	UpdatedAt    string  `json:"updated_at,omitempty"`
 	Change24h    float64 `json:"change_24h"`
 	IsNative     bool    `json:"is_native"`
 }
@@ -147,6 +149,7 @@ type TokenBalanceView struct {
 	PriceUSD     string  `json:"price_usd"`
 	ValueUSD     string  `json:"value_usd"`
 	ValueIDR     string  `json:"value_idr"`
+	UpdatedAt    string  `json:"updated_at,omitempty"`
 	Change24h    float64 `json:"change_24h"`
 	IsNative     bool    `json:"is_native"`
 }
@@ -168,6 +171,7 @@ type NetworkCard struct {
 	USDTBalance   string             `json:"usdt_balance"`
 	TotalValueUSD string             `json:"total_value_usd"`
 	TotalValueIDR string             `json:"total_value_idr"`
+	DataUpdatedAt string             `json:"data_updated_at,omitempty"`
 	Change24h     float64            `json:"change_24h_percent"`
 	HasWallet     bool               `json:"has_wallet"`
 	Tokens        []TokenBalanceView `json:"tokens"`
@@ -181,6 +185,7 @@ type OverviewResponse struct {
 	Change24hPercent float64       `json:"change_24h_percent"`
 	USDIDRRate       string        `json:"usd_idr_rate"`
 	FXUpdatedAt      string        `json:"fx_updated_at,omitempty"`
+	DataUpdatedAt    string        `json:"data_updated_at,omitempty"`
 	RefreshedAt      string        `json:"refreshed_at"`
 	Networks         []NetworkCard `json:"networks"`
 }

@@ -33,6 +33,7 @@ type BalanceRow struct {
 	Balance      string
 	ValueUSD     string
 	ValueIDR     string
+	UpdatedAt    string
 }
 
 // ListWalletTargets mengambil wallet yang punya alamat dan jaringan.
@@ -259,7 +260,7 @@ func sumColumn(ctx context.Context, tx *sql.Tx, column, walletID, network string
 // GetWalletBalances membaca saldo tersimpan untuk satu wallet.
 func (s *Store) GetWalletBalances(ctx context.Context, walletID string) ([]BalanceRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT wallet_id, network, COALESCE(token_address, ''), token_symbol, balance, value_usd, value_idr
+		SELECT wallet_id, network, COALESCE(token_address, ''), token_symbol, balance, value_usd, value_idr, COALESCE(updated_at, '')
 		FROM wallet_balances
 		WHERE wallet_id = ?
 		ORDER BY network, token_symbol
@@ -272,7 +273,7 @@ func (s *Store) GetWalletBalances(ctx context.Context, walletID string) ([]Balan
 	var result []BalanceRow
 	for rows.Next() {
 		var row BalanceRow
-		if err := rows.Scan(&row.WalletID, &row.Network, &row.TokenAddress, &row.TokenSymbol, &row.Balance, &row.ValueUSD, &row.ValueIDR); err != nil {
+		if err := rows.Scan(&row.WalletID, &row.Network, &row.TokenAddress, &row.TokenSymbol, &row.Balance, &row.ValueUSD, &row.ValueIDR, &row.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("store: scan balance: %w", err)
 		}
 		result = append(result, row)

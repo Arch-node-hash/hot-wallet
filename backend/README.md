@@ -362,6 +362,7 @@ curl http://localhost:5009/api/v1/wallets/overview
     "change_24h_percent": 1.11,
     "usd_idr_rate": "18221.88",
     "fx_updated_at": "2026-01-01T00:00:00Z",
+    "data_updated_at": "2026-01-01T00:00:00Z",
     "refreshed_at": "2026-01-01T00:00:00Z",
     "networks": [
       {
@@ -385,7 +386,7 @@ curl http://localhost:5009/api/v1/wallets/overview
         "tokens": [
           { "token_address": "", "symbol": "ETH", "decimals": 18, "balance": "2",
             "price_usd": "3000", "value_usd": "6000.00", "value_idr": "109331280",
-            "change_24h": 2, "is_native": true },
+            "updated_at": "2026-01-01T00:00:00Z", "change_24h": 2, "is_native": true },
           { "token_address": "0xdAC1...ec7", "symbol": "USDT", "decimals": 6, "balance": "1000",
             "price_usd": "1", "value_usd": "1000.00", "value_idr": "18221880",
             "change_24h": 0, "is_native": false }
@@ -400,6 +401,26 @@ Kartu `networks` selalu berisi 5 jaringan (wallet yang belum ada tetap muncul
 dengan `has_wallet: false`), diurutkan dari `total_value_usd` terbesar.
 `POST /api/v1/wallets/refresh` mengembalikan bentuk yang sama setelah membaca
 ulang saldo via RPC HTTP.
+
+### Kesegaran data (tidak ada cache response)
+
+Backend **tidak menyimpan cache response di memori**; setiap GET membaca
+SQLite saat itu juga. Yang membuat data terlihat "tidak berubah" adalah:
+
+- saldo ditulis oleh watcher (tiap blok / ±15–30 detik), bukan saat GET;
+- kurs USD → IDR diperbarui tiap `FX_REFRESH` (default 30 menit).
+
+Karena itu response menyertakan cap waktu asli data:
+
+- `data_updated_at` (overview & detail): waktu tulis saldo terbaru;
+- `updated_at` per token;
+- `refreshed_at`: waktu response dibuat (bukan umur data);
+- `fx_updated_at`: waktu kurs diambil.
+
+Semua response `/api/*` dikirim dengan `Cache-Control: no-store`, sehingga
+browser/proxy tidak boleh menyajikan salinan lama. Untuk memaksa pembacaan
+on-chain segera, panggil `POST /api/v1/wallets/refresh` atau
+`POST /api/v1/wallets/{walletID}/refresh`.
 
 ### `GET /api/v1/wallets/addresses` — modal alamat 2 kolom
 

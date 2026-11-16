@@ -58,6 +58,11 @@ func (s *Service) Overview(ctx context.Context) (*OverviewResponse, error) {
 	}
 	changeUSD := mulUSD(total, strconv.FormatFloat(percent/100, 'f', 10, 64))
 
+	dataUpdatedAt := ""
+	for _, card := range cards {
+		dataUpdatedAt = maxTimestamp(dataUpdatedAt, card.DataUpdatedAt)
+	}
+
 	return &OverviewResponse{
 		TotalValueUSD:    total,
 		TotalValueIDR:    totalIDR,
@@ -65,6 +70,7 @@ func (s *Service) Overview(ctx context.Context) (*OverviewResponse, error) {
 		Change24hPercent: round2(percent),
 		USDIDRRate:       fxRate.Rate,
 		FXUpdatedAt:      fxRate.UpdatedAt,
+		DataUpdatedAt:    dataUpdatedAt,
 		RefreshedAt:      nowRFC3339(),
 		Networks:         cards,
 	}, nil
@@ -152,6 +158,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 				PriceUSD:     price,
 				ValueUSD:     value,
 				ValueIDR:     valueIDR,
+				UpdatedAt:    b.UpdatedAt,
 				Change24h:    change,
 				IsNative:     b.TokenAddress == "",
 			}
@@ -170,6 +177,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 			}
 
 			card.Tokens = append(card.Tokens, view)
+			card.DataUpdatedAt = maxTimestamp(card.DataUpdatedAt, b.UpdatedAt)
 			totalValue += toFloat(value)
 			totalIDR = addIDR(totalIDR, valueIDR)
 			weighted += toFloat(value) * change
@@ -1019,6 +1027,14 @@ func addUSD(a, b string) string {
 		rb = new(big.Rat)
 	}
 	return format2Rat(new(big.Rat).Add(ra, rb))
+}
+
+// maxTimestamp mengembalikan cap waktu terbaru dari dua string RFC3339.
+func maxTimestamp(a, b string) string {
+	if b > a {
+		return b
+	}
+	return a
 }
 
 // addIDR menjumlahkan nilai rupiah bulat tanpa mengubahnya menjadi desimal.

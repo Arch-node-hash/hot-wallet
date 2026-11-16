@@ -82,9 +82,11 @@ func (s *Service) GetWallet(ctx context.Context, id string) (*WalletDetailRespon
 	totalIDR := "0"
 	native := "0"
 	usdt := "0"
+	dataUpdatedAt := ""
 	for _, item := range items {
 		total = addUSD(total, item.ValueUSD)
 		totalIDR = addIDR(totalIDR, item.ValueIDR)
+		dataUpdatedAt = maxTimestamp(dataUpdatedAt, item.UpdatedAt)
 		if item.IsNative {
 			native = item.Balance
 		}
@@ -107,6 +109,7 @@ func (s *Service) GetWallet(ctx context.Context, id string) (*WalletDetailRespon
 		USDTBalance:     usdt,
 		TotalValueUSD:   total,
 		TotalValueIDR:   totalIDR,
+		DataUpdatedAt:   dataUpdatedAt,
 		DerivationPath:  row.DerivationPath,
 		Balance:         row.Balance,
 		NetworkBalances: map[string][]BalanceItem{row.Network: items},
@@ -150,6 +153,7 @@ func (s *Service) balanceItems(ctx context.Context, row store.WalletRow) ([]Bala
 			PriceUSD:     price,
 			ValueUSD:     mulUSD(b.Balance, price),
 			ValueIDR:     store.IDRValue(mulUSD(b.Balance, price), fxRate.Rate),
+			UpdatedAt:    b.UpdatedAt,
 			Change24h:    change,
 			IsNative:     b.TokenAddress == "",
 		})

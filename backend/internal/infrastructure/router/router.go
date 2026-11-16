@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -40,6 +41,17 @@ func New(cfg config.Config, st *store.Store) *fiber.App {
 		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders: []string{"Content-Type", "Authorization"},
 	}))
+
+	// Response API tidak boleh disimpan browser/proxy. Tanpa header ini,
+	// klien bisa memakai salinan lama walau database sudah berubah.
+	app.Use(func(c fiber.Ctx) error {
+		if strings.HasPrefix(c.Path(), "/api/") {
+			c.Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+			c.Set("Pragma", "no-cache")
+			c.Set("Expires", "0")
+		}
+		return c.Next()
+	})
 
 	// Services
 	walletSvc := wallet.NewService(st, cfg)
