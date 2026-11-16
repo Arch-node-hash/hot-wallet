@@ -142,7 +142,7 @@ func (s *Store) UpsertBalances(ctx context.Context, rows []BalanceRow) error {
 		}
 		valueIDR := row.ValueIDR
 		if valueIDR == "" {
-			valueIDR = mulDecimal(valueUSD, rate)
+			valueIDR = IDRValue(valueUSD, rate)
 		}
 
 		_, err := tx.Exec(`
@@ -248,6 +248,10 @@ func sumColumn(ctx context.Context, tx *sql.Tx, column, walletID, network string
 	}
 	if err := rows.Err(); err != nil {
 		return "0", fmt.Errorf("store: rows sum %s: %w", column, err)
+	}
+	if column == "value_idr" {
+		// Nilai IDR disimpan sebagai rupiah bulat.
+		return roundIDR(total), nil
 	}
 	return total, nil
 }

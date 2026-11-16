@@ -42,7 +42,7 @@ func (s *Service) Overview(ctx context.Context) (*OverviewResponse, error) {
 	for _, card := range cards {
 		value := toFloat(card.TotalValueUSD)
 		total = addUSD(total, card.TotalValueUSD)
-		totalIDR = addUSD(totalIDR, card.TotalValueIDR)
+		totalIDR = addIDR(totalIDR, card.TotalValueIDR)
 		weighted += value * card.Change24h
 	}
 
@@ -113,7 +113,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 			NativeBalance: "0",
 			USDTBalance:   "0",
 			TotalValueUSD: "0.00",
-			TotalValueIDR: "0.00",
+			TotalValueIDR: "0",
 			Tokens:        []TokenBalanceView{},
 		}
 
@@ -134,7 +134,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 		}
 
 		totalValue := 0.0
-		totalIDR := 0.0
+		totalIDR := "0"
 		weighted := 0.0
 		seenNative := false
 		seenTokens := make(map[string]bool)
@@ -142,7 +142,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 		for _, b := range balances {
 			price, change := idx.Lookup(meta.Name, b.TokenAddress, b.TokenSymbol)
 			value := mulUSD(b.Balance, price)
-			valueIDR := mulUSD(value, fxRate.Rate)
+			valueIDR := store.IDRValue(value, fxRate.Rate)
 
 			view := TokenBalanceView{
 				TokenAddress: b.TokenAddress,
@@ -171,7 +171,7 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 
 			card.Tokens = append(card.Tokens, view)
 			totalValue += toFloat(value)
-			totalIDR += toFloat(valueIDR)
+			totalIDR = addIDR(totalIDR, valueIDR)
 			weighted += toFloat(value) * change
 		}
 
@@ -204,14 +204,14 @@ func (s *Service) buildNetworkCards(ctx context.Context) ([]NetworkCard, error) 
 				Balance:      "0",
 				PriceUSD:     idx.Price(meta.Name, t.Address, t.Symbol),
 				ValueUSD:     "0.00",
-				ValueIDR:     "0.00",
+				ValueIDR:     "0",
 			})
 		}
 
 		sortTokenViews(card.Tokens)
 
 		card.TotalValueUSD = format2(totalValue)
-		card.TotalValueIDR = format2(totalIDR)
+		card.TotalValueIDR = totalIDR
 		if totalValue > 0 {
 			card.Change24h = round2(weighted / totalValue)
 		}
@@ -1019,6 +1019,19 @@ func addUSD(a, b string) string {
 		rb = new(big.Rat)
 	}
 	return format2Rat(new(big.Rat).Add(ra, rb))
+}
+
+// addIDR menjumlahkan nilai rupiah bulat tanpa mengubahnya menjadi desimal.
+func addIDR(a, b string) string {
+	ia, ok := new(big.Int).SetString(strings.TrimSpace(a), 10)
+	if !ok {
+		ia = new(big.Int)
+	}
+	ib, ok := new(big.Int).SetString(strings.TrimSpace(b), 10)
+	if !ok {
+		ib = new(big.Int)
+	}
+	return new(big.Int).Add(ia, ib).String()
 }
 
 func format2Rat(r *big.Rat) string {

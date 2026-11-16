@@ -84,7 +84,7 @@ func (s *Service) GetWallet(ctx context.Context, id string) (*WalletDetailRespon
 	usdt := "0"
 	for _, item := range items {
 		total = addUSD(total, item.ValueUSD)
-		totalIDR = addUSD(totalIDR, item.ValueIDR)
+		totalIDR = addIDR(totalIDR, item.ValueIDR)
 		if item.IsNative {
 			native = item.Balance
 		}
@@ -149,7 +149,7 @@ func (s *Service) balanceItems(ctx context.Context, row store.WalletRow) ([]Bala
 			Balance:      b.Balance,
 			PriceUSD:     price,
 			ValueUSD:     mulUSD(b.Balance, price),
-			ValueIDR:     mulUSD(mulUSD(b.Balance, price), fxRate.Rate),
+			ValueIDR:     store.IDRValue(mulUSD(b.Balance, price), fxRate.Rate),
 			Change24h:    change,
 			IsNative:     b.TokenAddress == "",
 		})

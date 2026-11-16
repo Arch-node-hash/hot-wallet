@@ -116,12 +116,12 @@ func (s *Store) RevalueBalances(ctx context.Context, rate string) error {
 			return fmt.Errorf("store: revalue scan: %w", err)
 		}
 		key := balance{walletID: walletID, network: network}
-		valueIDR := mulDecimal(valueUSD, rate)
+		valueIDR := IDRValue(valueUSD, rate)
 		updates = append(updates, update{
 			key:   balance{walletID: walletID, network: network, tokenAddress: tokenAddress},
 			value: valueIDR,
 		})
-		totals[key] = addDecimal(totals[key], valueIDR)
+		totals[key] = roundIDR(addDecimal(totals[key], valueIDR))
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {

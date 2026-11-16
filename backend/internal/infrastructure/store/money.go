@@ -35,3 +35,19 @@ func addDecimal(a, b string) string {
 func formatDecimal(r *big.Rat) string {
 	return new(big.Float).SetRat(r).Text('f', 2)
 }
+
+// IDRValue menghitung nilai rupiah dari nilai USD × kurs, dibulatkan ke
+// rupiah bulat (tanpa sen) supaya frontend tidak perlu memformat ulang.
+func IDRValue(valueUSD, rate string) string {
+	return roundIDR(mulDecimal(valueUSD, rate))
+}
+
+// roundIDR membulatkan desimal ke rupiah terdekat (setengah ke atas).
+func roundIDR(value string) string {
+	r, ok := new(big.Rat).SetString(strings.TrimSpace(value))
+	if !ok {
+		return "0"
+	}
+	r.Add(r, big.NewRat(1, 2))
+	return new(big.Int).Quo(r.Num(), r.Denom()).String()
+}

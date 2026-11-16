@@ -338,7 +338,8 @@ Nilai USD dihitung dari tabel `token_prices`. Stablecoin
 (USDT/USDC/DAI/BUSD/TUSD/FDUSD/USDe/USDD/USDG) selalu dihargai $1 bila belum
 ada baris harga. Native token bernilai 0 sampai `token_prices` diisi.
 
-Nilai IDR = nilai USD × kurs USD → IDR. Kurs **diambil dari penyedia publik**
+Nilai IDR = nilai USD × kurs USD → IDR, dibulatkan ke **rupiah bulat**
+(tanpa sen) supaya frontend tinggal menampilkan. Kurs **diambil dari penyedia publik**
 (`FX_API_URL`, default `open.er-api.com`), disimpan di `fx_rates`, dan
 diperbarui tiap `FX_REFRESH` (default 30 menit), jadi rupiah ikut menguat atau
 melemah tanpa rebuild. Bila pengambilan gagal, kurs terakhir di database tetap
@@ -356,7 +357,7 @@ curl http://localhost:5009/api/v1/wallets/overview
   "success": true,
   "data": {
     "total_value_usd": "9000.00",
-    "total_value_idr": "164000000.00",
+    "total_value_idr": "163996920",
     "change_24h_usd": "100.00",
     "change_24h_percent": 1.11,
     "usd_idr_rate": "18221.88",
@@ -378,15 +379,15 @@ curl http://localhost:5009/api/v1/wallets/overview
         "native_balance": "2",
         "usdt_balance": "1000",
         "total_value_usd": "7000.00",
-        "total_value_idr": "127553160.00",
+        "total_value_idr": "127553160",
         "change_24h_percent": 1.71,
         "has_wallet": true,
         "tokens": [
           { "token_address": "", "symbol": "ETH", "decimals": 18, "balance": "2",
-            "price_usd": "3000", "value_usd": "6000.00", "value_idr": "109331280.00",
+            "price_usd": "3000", "value_usd": "6000.00", "value_idr": "109331280",
             "change_24h": 2, "is_native": true },
           { "token_address": "0xdAC1...ec7", "symbol": "USDT", "decimals": 6, "balance": "1000",
-            "price_usd": "1", "value_usd": "1000.00", "value_idr": "18221880.00",
+            "price_usd": "1", "value_usd": "1000.00", "value_idr": "18221880",
             "change_24h": 0, "is_native": false }
         ]
       }
